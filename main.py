@@ -10,6 +10,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+from openpyxl import load_workbook
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -173,6 +174,58 @@ def login_success_check(driver, account):
     return False
 
 
+def search_keyword(keyword: str, timeout: int = 10):
+    try:
+        wait = WebDriverWait(driver, timeout)
+
+        search_input = wait.until(
+            EC.presence_of_element_located((By.XPATH, "//input[contains(@placeholder, '슬롯번호, 아이디, 키워드')]")))
+
+        search_input.clear()
+        search_input.send_keys(keyword)
+
+        search_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), '검색')]")))
+
+        search_button.click()
+        time.sleep(2)
+        print(f"{keyword} 검색 완료")
+
+    except Exception as e:
+        print(f"키워드 검색 중 오류 발생: {e}")
+
+
+EXCEL_PATH = os.path.join(BASE_DIR, 'TOP★점프_트래픽관리.xlsm')
+def get_keyword_from_xlsm():
+    if not os.path.exists(EXCEL_PATH):
+        print(f"파일을 찾을 수 없습니다: {EXCEL_PATH}")
+        return []
+
+    # 1. 엑셀 로드
+    # keep_vba=True: 매크로 유지
+    # data_only=True: 수식이 아닌 '텍스트 결과값'만 가져옴
+    wb = load_workbook(EXCEL_PATH, keep_vba=True, data_only=True)
+    ws = wb['데이터']
+
+    # 2. 키워드 가져오기
+    keywords = set()
+    for row in ws.iter_rows(min_row=7, min_col=10, max_col=10):
+        cell_value = row[0].value # iter_rows는 한 행을 셀들의 묶음(튜플)으로 반환
+
+        if cell_value is None:
+            continue
+
+        keyword = str(cell_value).strip()
+
+        if not keyword:
+            continue
+
+        keywords.add(keyword)
+
+    print(f"키워드 추출: {list(keywords)}")
+
+    wb.close()
+    return keywords
+
 
 if __name__ == "__main__":
     account = {"user_id": "sstrade251016", "user_pw": "a2345"}
@@ -182,4 +235,6 @@ if __name__ == "__main__":
 
     login_success = login_success_check(driver, account)
 
-
+    keywords = get_keyword_from_xlsm()
+    for keyword in keywords:
+        search_keyword(keyword)
