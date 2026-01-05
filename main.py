@@ -174,7 +174,7 @@ def login_success_check(driver, account):
     return False
 
 
-def search_keyword(keyword: str, timeout: int = 10):
+def search_keyword(driver, keyword: str, timeout: int = 10):
     try:
         wait = WebDriverWait(driver, timeout)
 
@@ -188,7 +188,7 @@ def search_keyword(keyword: str, timeout: int = 10):
 
         search_button.click()
         time.sleep(2)
-        print(f"{keyword} 검색 완료")
+        print(f"'{keyword}' 검색 완료")
 
     except Exception as e:
         print(f"키워드 검색 중 오류 발생: {e}")
@@ -227,9 +227,99 @@ def get_keyword_from_xlsm():
     return keywords
 
 
+# date = '2026-01-01'인 경우만 처리
+def extract_product_results(driver, target_date: str, timeout: int = 10):
+    wait = WebDriverWait(driver, timeout)
+    product_results = []
+
+    try:
+        rows = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//tbody/tr")))
+
+        if not rows or (len(rows) == 1 and "슬롯 정보가 없습니다" in rows[0].text):
+            print("조회 결과 없음")
+            return []
+
+        is_date_found = False  # 날짜 일치하는 행을 한 번이라도 만났는지 확인
+
+        for row in rows:
+            try:
+                start_date_ele = row.find_element(By.XPATH, "./td[12]")
+                start_date = start_date_ele.text.strip()
+
+                if start_date == target_date:
+                    is_date_found = True  # 일치하는 날짜 찾음
+                    rank_text = row.find_element(By.XPATH, "./td[9]").text.strip()
+                    rank_number = rank_text
+                    if "순위밖" in rank_text:
+                        rank_number = "순위밖"
+                    elif "위" in rank_text:
+                        # "위" 앞에 숫자가 있는 경우만 추출
+                        rank_number = rank_text.split('위')[0].strip()
+
+                    url = row.find_element(By.XPATH, "./td[8]//a").get_attribute("href")
+                    last_id = url.split("=")[-1]
+
+                    product_results.append((last_id, rank_number))
+                    print(f"시작일: {start_date}, VI ID: {last_id}, 순위: {rank_number}")
+
+                else:
+                    print(f"{target_date}가 아니므로 작업 중단")
+                    break  # 더이상 다음 row 보지 않고 for문 탈출 (내림차순이므로)
+
+            except Exception as e:
+                continue
+
+        # 날짜는 찾았으나 결과가 비었을 때만 경고
+        if not product_results:
+            if is_date_found:
+                print(f"'{target_date}' 행은 찾았으나, 내부 데이터(VI ID/순위) 추출에 실패했습니다.")
+
+    except Exception as e:
+        print(f"테이블 로딩 중 오류 발생: {e}")
+
+    return product_results
+
+
+def update_excel_rank(target_vi_id, target_keyword, rank_value):
+    if not os.path.exists(EXCEL_PATH):
+        print("파일을 찾을 수 없습니다.")
+        return
+
+    # keep_vba=True 옵션으로 매크로 보존
+    # 값을 입력해야 하므로 data_only=False(기본값)
+    wb = load_workbook(EXCEL_PATH, keep_vba=True)
+    ws = wb['데이터']
+
+    # 열 번호 설정
+    COL_VI_ID = 6  # F열
+    COL_KEYWORD = 10  # J열
+    COL_TARGET = 74  # BV열
+
+    found = False
+    # 7행부터 마지막 행까지 탐색
+    for row in range(7, ws.max_row + 1):
+        # 엑셀의 VI ID가 숫자형일 수 있으므로 문자열로 변환하여 비교
+        vi_id = str(ws.cell(row=row, column=COL_VI_ID).value or "").strip()
+        keyword = str(ws.cell(row=row, column=COL_KEYWORD).value or "").strip()
+
+        # 두 조건이 일치하는 행 찾기
+        if vi_id == str(target_vi_id) and keyword == target_keyword:
+            # BV열(74번)에 값 입력
+            ws.cell(row=row, column=COL_TARGET).value = rank_value
+            print(f"{row}행에 순위 값 '{rank_value}' 입력")
+            found = True
+            break  # 찾았으므로 루프 종료 (1개 밖에 없는 게 맞는지 확인 필요)
+
+    if not found:
+        print(f"조건에 맞는 행을 찾지 못함: VI ID {target_vi_id}, 키워드 {target_keyword}")
+
+
+
 if __name__ == "__main__":
     account = {"user_id": "sstrade251016", "user_pw": "a2345"}
     user_id = account["user_id"]
+
+    wb = load_workbook(EXCEL_PATH, keep_vba=True, data_only=True)
 
     driver = create_driver(user_id, headless=False)
 
@@ -237,4 +327,17 @@ if __name__ == "__main__":
 
     keywords = get_keyword_from_xlsm()
     for keyword in keywords:
-        search_keyword(keyword)
+        search_keyword(driver, keyword)
+
+        product_results = extract_product_results(driver, '2026-01-01')
+
+        for product_result in product_results:
+            product_id = product_result[0]
+            product_rank = product_result[1]
+
+            update_excel_rank(product_id, keyword, product_rank)
+
+    wb.save(EXCEL_PATH)
+    print("파일이 저장되었습니다.")
+
+    wb.close()
