@@ -198,13 +198,13 @@ EXCEL_PATH = os.path.join(BASE_DIR, 'TOP★점프_트래픽관리.xlsm')
 def get_keyword_from_xlsm():
     if not os.path.exists(EXCEL_PATH):
         print(f"파일을 찾을 수 없습니다: {EXCEL_PATH}")
-        return []
+        return set()
 
     # 1. 엑셀 로드
     # keep_vba=True: 매크로 유지
     # data_only=True: 수식이 아닌 '텍스트 결과값'만 가져옴
-    wb = load_workbook(EXCEL_PATH, keep_vba=True, data_only=True)
-    ws = wb['데이터']
+    temp_wb = load_workbook(EXCEL_PATH, keep_vba=True, data_only=True)
+    ws = temp_wb['데이터']
 
     # 2. 키워드 가져오기
     keywords = set()
@@ -223,7 +223,7 @@ def get_keyword_from_xlsm():
 
     print(f"키워드 추출: {list(keywords)}")
 
-    wb.close()
+    temp_wb.close()
     return keywords
 
 
@@ -280,15 +280,7 @@ def extract_product_results(driver, target_date: str, timeout: int = 10):
     return product_results
 
 
-def update_excel_rank(target_vi_id, target_keyword, rank_value):
-    if not os.path.exists(EXCEL_PATH):
-        print("파일을 찾을 수 없습니다.")
-        return
-
-    # keep_vba=True 옵션으로 매크로 보존
-    # 값을 입력해야 하므로 data_only=False(기본값)
-    wb = load_workbook(EXCEL_PATH, keep_vba=True)
-    ws = wb['데이터']
+def update_excel_rank(ws, target_vi_id, target_keyword, rank_value):
 
     # 열 번호 설정
     COL_VI_ID = 6  # F열
@@ -317,27 +309,39 @@ def update_excel_rank(target_vi_id, target_keyword, rank_value):
 
 if __name__ == "__main__":
     account = {"user_id": "sstrade251016", "user_pw": "a2345"}
-    user_id = account["user_id"]
 
-    wb = load_workbook(EXCEL_PATH, keep_vba=True, data_only=True)
-
-    driver = create_driver(user_id, headless=False)
-
-    login_success = login_success_check(driver, account)
-
+    # 1. 검색할 키워드 목록 가져오기
     keywords = get_keyword_from_xlsm()
-    for keyword in keywords:
-        search_keyword(driver, keyword)
 
-        product_results = extract_product_results(driver, '2026-01-01')
+    # 2. 수정을 위해 파일을 '한 번만' 로드 (VBA 유지, 수식 보존을 위해 data_only=False)
+    main_wb = load_workbook(EXCEL_PATH, keep_vba=True)
+    main_ws = main_wb['데이터']
 
-        for product_result in product_results:
-            product_id = product_result[0]
-            product_rank = product_result[1]
+    # 3. 드라이버 실행 및 로그인 상태 확인
+    driver = create_driver(account["user_id"], headless=False)
 
-            update_excel_rank(product_id, keyword, product_rank)
+    try:
+        if login_success_check(driver, account):
+            # 4. 각 키워드별 반복 검색
+            for keyword in keywords:
+                search_keyword(driver, keyword)
 
-    wb.save(EXCEL_PATH)
-    print("파일이 저장되었습니다.")
+                # 5. 웹 페이지에서 결과 데이터 추출
+                product_results = extract_product_results(driver, '2026-01-01')
 
-    wb.close()
+                # 6. 추출된 결과(ID, 순위)를 시트에 반영
+                for product_result in product_results:
+                    product_id = product_result[0]
+                    product_rank = product_result[1]
+
+                    update_excel_rank(main_ws, product_id, keyword, product_rank)
+
+            # 7. 모든 작업이 끝난 후 파일 저장
+            main_wb.save(EXCEL_PATH)
+            print("파일이 저장되었습니다.")
+
+    except Exception as e:
+        print(f"실행 중 오류 발생: {e}")
+    finally:
+        main_wb.close()
+        driver.quit()
