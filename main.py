@@ -217,76 +217,68 @@ def get_keyword_from_xlsm():
     return keywords
 
 
-# target_date는 엑셀에 순위 입력한 날짜(예.1/1)를 2026-01-01로 변환한 값
 def extract_product_results(driver, target_dates: list, timeout: int = 10):
     wait = WebDriverWait(driver, timeout)
 
-    # 결과를 담을 딕셔너리 (날짜별로 결과 리스트를 저장)
     product_results = {d_text: [] for d_text in target_dates}
 
-    # 비교를 위해 타겟 날짜들을 datetime 객체로 미리 변환
+    # 비교를 위해 타겟 날짜들을 datetime 객체로 변환
     target_dt_list = [datetime.strptime(d, '%Y-%m-%d') for d in target_dates]
 
     try:
-        rows = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//tbody/tr")))
+        # [수정] 테이블의 데이터(tr)가 최소한 하나라도 나타날 때까지 기다림
+        # 검색 후 로딩 시간을 고려하여 확실하게 대기합니다.
+        time.sleep(1.5)
 
-        if not rows or (len(rows) == 1 and "슬롯 정보가 없습니다" in rows[0].text):
-            print("조회 결과 없음")
-            return {}
+        try:
+            # tbody 안에 tr이 있는지 확인
+            rows = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//tbody/tr")))
+        except TimeoutException:
+            print("테이블 응답 시간 초과: 결과가 없거나 로딩이 너무 느립니다.")
+            return product_results
+
+        # '조회 결과 없음' 문구가 있는 경우 처리
+        if len(rows) == 0 or (len(rows) == 1 and "정보가 없습니다" in rows[0].text):
+            print("조회 결과 없음 (표시된 데이터가 없습니다)")
+            return product_results
 
         for row in rows:
             try:
+                # 시작일(12)과 종료일(13) 추출
                 start_date_text = row.find_element(By.XPATH, "./td[12]").text.strip()
                 end_date_text = row.find_element(By.XPATH, "./td[13]").text.strip()
 
-                # 날짜 형식이 빈 값이거나 유효하지 않을 경우 건너뜀
                 if not start_date_text or not end_date_text:
                     continue
 
-                # 웹의 날짜 텍스트를 datetime 객체로 변환
                 start_date = datetime.strptime(start_date_text, '%Y-%m-%d')
                 end_date = datetime.strptime(end_date_text, '%Y-%m-%d')
 
+                # 타겟 날짜 중 가장 오래된 날짜보다 현재 데이터의 종료일이 더 과거라면 건너뜀
+                if end_date < min(target_dt_list):
+                    continue
+
+                # 순위(9) 및 ID(8) 추출
                 rank_text = row.find_element(By.XPATH, "./td[9]").text.strip()
                 rank_number = ""
-                if "순위밖" in rank_text:
-                    rank_number = ""
-                elif "위" in rank_text:
-                    # "위" 앞에 숫자가 있는 경우만 추출
+                if "순위밖" not in rank_text and "위" in rank_text:
                     rank_number = rank_text.split('위')[0].strip()
 
                 url = row.find_element(By.XPATH, "./td[8]//a").get_attribute("href")
                 last_id = url.split("=")[-1]
 
-                for i, target_date in enumerate(target_dt_list):
-                    # 타겟 날짜가 시작~종료 범위 안에 있는 경우
-                    if start_date <= target_date <= end_date:
-                        is_date_found = True  # 일치하는 날짜 찾음
+                # 모든 타겟 날짜에 대해 매칭 확인
+                for i, target_dt in enumerate(target_dt_list):
+                    if start_date <= target_dt <= end_date:
                         product_results[target_dates[i]].append((last_id, rank_number))
-                        print(f"시작일: {start_date}, VI ID: {last_id}, 순위: {rank_number}")
+                        print(f"매칭 발견: {target_dates[i]} | ID: {last_id} | 순위: {rank_number}")
 
-                    # 타겟 날짜가 종료일보다 클때 (이미 지나간 과거 데이터)
-                    # 리스트가 최신순 정렬이므로, 이후의 행들은 검사할 필요 없음
-                    elif target_date > end_date:
-                        print(f"과거 데이터 구간({end_date_text}) 진입. 검사를 중단합니다.")
-                        break
-
-                    # 타겟 날짜가 시작일보다 작을때 (아직 시작되지 않은 미래 데이터)
-                    # 미래 예약 슬롯은 리스트 상단에 있을 수 있으므로, break 하지 않고 다음 행을 확인
-                    elif target_date < start_date:
-                        print(f"미래 데이터({start_date_text}) 발견. 건너뛰고 다음 행을 확인합니다.")
-                        continue
-
-            except Exception as e:
+            except Exception:
+                # 개별 행 파싱 실패 시 다음 행으로 진행
                 continue
 
-        # 날짜는 찾았으나 결과가 비었을 때만 경고
-        if not product_results:
-            if is_date_found:
-                print(f"'{target_date}' 행은 찾았으나, 내부 데이터(VI ID/순위) 추출에 실패했습니다.")
-
     except Exception as e:
-        print(f"테이블 로딩 중 오류 발생: {e}")
+        print(f"테이블 처리 중 오류 발생: {e}")
 
     return product_results
 
@@ -401,120 +393,103 @@ def get_missing_dates_for_keyword(ws, keyword, date_info_map):
 def update_excel_rank(ws, target_vi_id, target_keyword, rank_value, target_date):
     # 5행에서 날짜에 해당하는 열 번호 찾기
     target_col = None
-    # '2026-01-06' -> '1/6' 형식으로 변환하여 비교 준비
+    # 날짜 입력 형식을 안전하게 변환
     dt = datetime.strptime(target_date, '%Y-%m-%d')
     search_header = f"{dt.month}/{dt.day}"
 
-    # BV열(74번)부터 실제 데이터가 있는 마지막 열까지 탐색
     for col in range(74, ws.max_column + 1):
         cell_val = ws.cell(row=5, column=col).value
+        if cell_val is None: continue
 
-        # 날짜 객체 또는 문자열 비교
-        if isinstance(cell_val, datetime):
-            header = f"{cell_val.month}/{cell_val.day}"
-        else:
-            header = str(cell_val).strip() if cell_val else ""
+        # 엑셀 헤더가 날짜 객체인지 텍스트인지 판별하여 비교
+        header = f"{cell_val.month}/{cell_val.day}" if isinstance(cell_val, datetime) else str(cell_val).strip()
 
         if header == search_header:
             target_col = col
             break
 
     if not target_col:
-        print(f"엑셀에서 날짜 {target_date} ({search_header}) 열을 찾을 수 없습니다.")
+        print(f"엑셀에서 {search_header} 열을 찾지 못했습니다.")
         return
 
-
-    # 열 번호 설정
     COL_VI_ID = 6  # F열
     COL_KEYWORD = 10  # J열
 
     found = False
-    # 7행부터 마지막 행까지 탐색
     for row in range(7, ws.max_row + 1):
-        # 엑셀의 VI ID가 숫자형일 수 있으므로 문자열로 변환하여 비교
-        vi_id = str(ws.cell(row=row, column=COL_VI_ID).value or "").strip()
+        # [수정] ID 비교 시 float 형태(.0)가 생기지 않도록 정수형 처리 후 문자열 변환
+        raw_vi_id = ws.cell(row=row, column=COL_VI_ID).value
+        try:
+            # 12345.0 같은 데이터를 '12345'로 변환
+            vi_id = str(int(float(raw_vi_id))) if raw_vi_id else ""
+        except:
+            vi_id = str(raw_vi_id or "").strip()
+
         keyword = str(ws.cell(row=row, column=COL_KEYWORD).value or "").strip()
 
-        # 두 조건이 일치하는 행 찾기
+        # ID와 키워드 동시 비교
         if vi_id == str(target_vi_id) and keyword == target_keyword:
-            # 찾은 날짜 열(target_col)에 순위 값 입력
             ws.cell(row=row, column=target_col).value = rank_value
-            print(f"{row}행에 {target_col}번 열에 순위 값 '{rank_value}' 입력")
+            print(f"성공: {row}행 {target_col}열에 '{rank_value}' 입력")
             found = True
-            break  # 찾았으므로 루프 종료 (1개 밖에 없는 게 맞는지 확인 필요)
+            break
 
     if not found:
-        print(f"{target_date} 조건에 맞는 행을 찾지 못함: VI ID {target_vi_id}, 키워드 {target_keyword}")
-
-
+        # 디버깅을 위해 찾지 못한 정보 출력
+        pass
 
 
 if __name__ == "__main__":
     account = {"user_id": "sstrade251016", "user_pw": "a2345"}
-
-    # 1. 수정을 위해 파일을 로드 (VBA 유지)
     main_wb = load_workbook(EXCEL_PATH, keep_vba=True)
     main_ws = main_wb['데이터']
 
-    # 2. 날짜 열 동기화 (1/1 ~ 오늘) 및 검색 키워드 추출
+    # 1. 날짜 동기화
     sync_date_columns_until_today(main_ws, start_date_str="2026-01-01")
     keywords = get_keyword_from_xlsm()
 
-    # 3. 날짜-열 인덱스 매핑 생성 (YYYY-MM-DD 형식으로 통일)
+    # 2. 날짜-열 매핑 생성 (YYYY-MM-DD 자릿수 엄격 적용)
     date_info_map = {}
     for col in range(74, main_ws.max_column + 1):
         val = main_ws.cell(row=5, column=col).value
+        if val is None: break
 
-        if val is None:
+        val_str = str(val).strip()
+        try:
+            # 어떠한 형식이든 datetime 객체로 바꾼 뒤 '2026-01-06' 형태로 통일
+            if isinstance(val, datetime):
+                d_str = val.strftime('%Y-%m-%d')
+            else:
+                d_str = datetime.strptime(f"2026/{val_str}", "%Y/%m/%d").strftime('%Y-%m-%d')
+            date_info_map[d_str] = col
+        except ValueError:
+            print(f"날짜가 아닌 헤더 발견 후 중단: {val_str}")
             break
 
-        # 1. 셀 값이 이미 datetime 객체인 경우 (엑셀 날짜 형식)
-        if isinstance(val, datetime):
-            d_str = val.strftime('%Y-%m-%d')
-            date_info_map[d_str] = col
-
-        # 2. 셀 값이 텍스트인 경우 (1/1, 1/2 등)
-        else:
-            val_str = str(val).strip()
-            try:
-                # '2026/1/1'과 같은 형식으로 변환 시도
-                # 변환에 성공하면 '1/1' 형태의 날짜로 간주
-                temp_dt = datetime.strptime(f"2026/{val_str}", "%Y/%m/%d")
-                d_str = temp_dt.strftime('%Y-%m-%d')
-                date_info_map[d_str] = col
-            except ValueError:
-                # '1/1' 형식이 아니면 (공란, 직전 등 모든 텍스트 포함) 즉시 탐색 중단
-                print(f"날짜 형식이 아닌 열 발견 ({val_str}). 날짜 수집을 종료합니다.")
-                break
-
-    # 4. 드라이버 실행 및 로그인
     driver = create_driver(account["user_id"], headless=False)
 
     try:
         if login_success_check(driver, account):
-            # 5. 각 키워드별 반복 검색
             for keyword in keywords:
-                # 이 키워드에 대해 순위가 비어있는 날짜들만 선별
-                missing_dates = get_missing_dates_for_keyword(main_ws, keyword, date_info_map)
+                # 'end' 키워드 등이 섞여 있을 경우를 대비한 방어 로직
+                if "end" in keyword.lower(): continue
 
+                missing_dates = get_missing_dates_for_keyword(main_ws, keyword, date_info_map)
                 if not missing_dates:
-                    print(f"[{keyword}] 이미 모든 날짜의 데이터가 존재합니다. 건너뜁니다.")
+                    print(f"[{keyword}] 입력할 칸이 없습니다. 패스.")
                     continue
 
-                print(f"\n--- {keyword} 작업 시작 (누락 날짜: {len(missing_dates)}개) ---")
                 search_keyword(driver, keyword)
-
-                # 6. 한 번의 페이지 스캔으로 누락된 모든 날짜 데이터 추출
                 all_results_map = extract_product_results(driver, missing_dates)
 
-                # 7. 추출된 결과를 날짜별로 엑셀에 반영
-                for date_text, product_results in all_results_map.items():
-                    for product_id, product_rank in product_results:
-                        update_excel_rank(main_ws, product_id, keyword, product_rank, date_text)
+                # 결과 데이터가 있을 때만 엑셀 기록 루프 실행
+                if all_results_map:
+                    for date_text, product_results in all_results_map.items():
+                        for p_id, p_rank in product_results:
+                            update_excel_rank(main_ws, p_id, keyword, p_rank, date_text)
 
-            # 8. 모든 작업 완료 후 최종 저장 (성능을 위해 마지막에 한 번만 수행)
             main_wb.save(EXCEL_PATH)
-            print("\n전체 작업 완료 및 엑셀 저장 성공!")
+            print("\n파일 저장 완료!")
 
     except Exception as e:
         print(f"실행 중 오류 발생: {e}")
