@@ -11,7 +11,8 @@ from web_handler import (
     create_driver,
     login_success_check,
     search_keyword,
-    extract_product_results
+    extract_product_results,
+    delete_chrome_cache
 )
 
 
@@ -45,6 +46,9 @@ def main():
         return
 
     # print(f"대상 키워드: {list(keywords)}")
+
+    # 브라우저 실행 전 크롬 캐시 삭제
+    delete_chrome_cache(ACCOUNT["user_id"])
 
     # 브라우저 실행 및 로그인
     driver = create_driver(ACCOUNT["user_id"], headless=False)

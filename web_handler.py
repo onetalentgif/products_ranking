@@ -11,6 +11,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from datetime import datetime
 from config import PROFILE_ROOT_DIR, TOP_ADS_URL
+import shutil  # 폴더 삭제를 위해
+
 
 
 def create_driver(user_id, headless: bool = False) -> webdriver.Chrome:
@@ -242,6 +244,41 @@ def extract_product_results(driver, target_dates: list, timeout: int = 10):
 
 
 
+def delete_chrome_cache(user_id):
+    target_profile_path = os.path.join(PROFILE_ROOT_DIR, user_id)
+
+    if not os.path.exists(target_profile_path):
+        print(f"SKIP: 프로필 폴더가 존재하지 않습니다. ({target_profile_path})")
+        return
+
+    print(f"\n[Cache Cleanup] Start: {target_profile_path}")
+
+    # 삭제할 하위 폴더 목록 (Default 내부 및 공통 캐시)
+    target_folders = [
+        os.path.join("Default", "Cache"),
+        os.path.join("Default", "Code Cache"),
+        os.path.join("Default", "GPUCache"),
+        "component_crx_cache",
+        "GrShaderCache",
+        "optimization_guide_model_store"
+    ]
+
+    for sub_folder in target_folders:
+        full_folder_path = os.path.join(target_profile_path, sub_folder)
+
+        # 폴더가 실제로 있을 때만 삭제 시도
+        if os.path.exists(full_folder_path):
+            try:
+                shutil.rmtree(full_folder_path)
+                print(f"SUCCESS: Deleted {sub_folder}")
+            except Exception as e:
+                # 보통 '액세스 거부' 에러가 많음 (크롬이 켜져 있을 때)
+                print(f"FAIL: {sub_folder} / {e}")
+        else:
+            print(f"SKIP: {sub_folder} (폴더 없음)")
+
+    print("[Cache Cleanup] Finished.\n")
+
 
 
 from excel_handler import get_keyword_from_xlsm
@@ -250,6 +287,9 @@ if __name__ == "__main__":
     account = {"user_id": "sstrade251016", "user_pw": "a2345"}
 
     target_dates = ['2026-01-06', '2026-01-07'] # 반드시 날짜 순서 유지 (오름차순), 텍스트 형식
+
+    # 작업 시작 전 불필요한 캐시 삭제
+    delete_chrome_cache(account["user_id"])
 
     # 검색할 키워드 목록 가져오기
     keywords = get_keyword_from_xlsm()
@@ -289,3 +329,4 @@ if __name__ == "__main__":
         print(f"실행 중 오류 발생: {e}")
     finally:
         driver.quit()
+        print("드라이버가 종료되었습니다.")
