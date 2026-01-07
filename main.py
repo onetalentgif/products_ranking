@@ -5,7 +5,7 @@ from excel_handler import (
     get_keyword_from_xlsm,
     sync_date_columns_until_today,
     get_all_date_texts_from_header,
-    update_excel_rank
+    update_excel_rank, get_dates_requiring_update
 )
 from web_handler import (
     create_driver,
@@ -28,16 +28,22 @@ def main():
     # 날짜 열 동기화 (오늘 날짜까지 열이 없으면 생성)
     sync_date_columns_until_today(ws)
 
-    # 엑셀에서 타겟 날짜 리스트 및 키워드 추출
-    # 헤더(5행)에 있는 모든 날짜('2026-01-01' 형태) 가져오기
-    target_dates = get_all_date_texts_from_header(ws)
-    keywords = get_keyword_from_xlsm()
-
+    # 데이터가 '전혀' 입력되지 않은 날짜 리스트만 추출
+    target_dates = get_dates_requiring_update(ws)
     if not target_dates:
-        print("작업할 타겟 날짜를 찾지 못했습니다.")
+        print(">>> 모든 날짜에 데이터가 이미 존재합니다. 추가로 작업할 내용이 없습니다.")
+        wb.close()
         return
 
-    # print(f"대상 날짜: {target_dates}")
+    print(f">>> 다음 날짜들에 대해 수집을 시작합니다: {target_dates}")
+
+    # 키워드 목록 가져오기
+    keywords = get_keyword_from_xlsm()
+    if not keywords:
+        print("검색할 키워드가 엑셀에 없습니다.")
+        wb.close()
+        return
+
     # print(f"대상 키워드: {list(keywords)}")
 
     # 브라우저 실행 및 로그인

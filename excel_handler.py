@@ -37,7 +37,7 @@ def get_keyword_from_xlsm():
 
 
 
-# 2026-01-01부터 날짜 열 추가
+# 2026-01-01부터 날짜 열 확인 및 추가
 def sync_date_columns_until_today(ws, start_date_str="2026-01-01"):
     """
     1월 1일부터 오늘까지 누락된 날짜 열을 5행에 자동으로 추가
@@ -47,44 +47,48 @@ def sync_date_columns_until_today(ws, start_date_str="2026-01-01"):
     start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
     today = datetime.now()
 
-    # 고정 열(BW열 등) 시작 위치
-    fixed_start_col = 75
+    # 날짜를 넣기 시작할 시작 열 (BV = 74)
+    start_search_col = 74
 
     # 1월 1일부터 오늘까지 반복하며 날짜 확인
     current_date = start_date
     while current_date <= today:
         date_header = f"{current_date.month}/{current_date.day}"
-
-        # 5행에서 해당 날짜가 이미 있는지 확인
-        is_exist = False
+        is_exist = False    # 5행에서 해당 날짜가 이미 있는지 확인
 
         # cell_val = ws.cell(row=5, column=74).value
 
-        for col in range(74, fixed_start_col):
+        # 현재 5행에 해당 날짜가 이미 있는지 끝까지 검사
+        last_col = ws.max_column
+        for col in range(start_search_col, last_col+1):
             cell_val = ws.cell(row=5, column=col).value
-        if cell_val is None:
-            continue
+            if cell_val is None:
+                continue
 
-        # 날짜 객체 또는 문자열 비교
-        if isinstance(cell_val, datetime):
-            check_str = f"{cell_val.month}/{cell_val.day}"
-        else:
-            check_str = str(cell_val).strip()
+            # 날짜 (객체 또는 문자열) 비교
+            if isinstance(cell_val, datetime):
+                check_str = f"{cell_val.month}/{cell_val.day}"
+            else:
+                check_str = str(cell_val).strip()
 
-        if check_str == date_header:
-            is_exist = True
-            break
+            if check_str == date_header:
+                is_exist = True
+                break
 
-        # 날짜가 없으면 열을 삽입하고 날짜 입력
+        # 날짜가 없으면 "가장 오른쪽 끝" 혹은 "특정 고정필드 직전"에 추가
         if not is_exist:
-            # 고정 열 바로 앞에 새 열 삽입
-            ws.insert_cols(fixed_start_col)
-            # 삽입된 위치에 날짜 기입
-            ws.cell(row=5, column=fixed_start_col).value = date_header
-            print(f"새 열 추가됨: {fixed_start_col}번째 열 ({date_header})")
+            # '비고'나 '서식' 같은 고정 헤더가 시작되는 위치를 찾음
+            target_col = start_search_col
+            while True:
+                val = ws.cell(row=5, column=target_col).value
+                # 빈칸이거나 고정 키워드가 나오면 그 자리에 삽입
+                if val is None or any(kw in str(val) for kw in ["직전", "비고", "서식", "공란"]):
+                    break
+                target_col += 1
 
-            # 열이 하나 추가되었으므로 고정 열의 위치(기준점)도 오른쪽으로 한 칸 이동
-            fixed_start_col += 1
+            ws.insert_cols(target_col)
+            ws.cell(row=5, column=target_col).value = date_header
+            print(f"새 열 추가됨: {target_col}번째 열 ({date_header})")
 
         current_date += timedelta(days=1)
 
@@ -198,3 +202,54 @@ def update_excel_rank(ws, target_vi_id, target_keyword, rank_value, target_date)
     if not found:
         # 디버깅을 위해 찾지 못한 정보 출력
         pass
+
+
+def get_dates_requiring_update(ws):
+    """
+    5행의 날짜 열들을 순회하며, 해당 열 전체(7행~마지막행)에
+    순위 데이터가 '단 하나도' 없는 날짜 리스트만 반환합니다.
+    """
+    COL_BV = 74
+    dates_to_update = []
+
+    for col in range(COL_BV, ws.max_column + 1):
+        header_val = ws.cell(row=5, column=col).value
+        if header_val is None: break
+
+        header_str = str(header_val).strip()
+        # 고정 헤더를 만나면 탐색 중단
+        if any(kw in header_str for kw in ["직전", "비고", "서식", "공란"]):
+            break
+
+        # --- 수정된 로직 시작 ---
+        has_any_data = False
+        for row in range(7, ws.max_row + 1):
+            rank_val = ws.cell(row=row, column=col).value
+
+            # 셀 값이 None이 아니고, 공백 제외 문자열이 존재하면 데이터가 있는 것으로 간주
+            if rank_val is not None and str(rank_val).strip() != "":
+                has_any_data = True
+                break  # 하나라도 데이터가 있으면 이 날짜는 검사 종료
+
+        # 데이터가 '하나도 없는' 날짜만 업데이트 대상으로 선정
+        if not has_any_data:
+            # 날짜 형식 통일 (YYYY-MM-DD)
+            if isinstance(header_val, datetime):
+                formatted_date = header_val.strftime('%Y-%m-%d')
+            else:
+                try:
+                    current_year = datetime.now().year
+                    dt = datetime.strptime(f"{current_year}/{header_str}", "%Y/%m/%d")
+                    formatted_date = dt.strftime('%Y-%m-%d')
+                except:
+                    formatted_date = header_str
+
+            dates_to_update.append(formatted_date)
+        # --- 수정된 로직 끝 ---
+
+    if dates_to_update:
+        print(f"데이터가 완전히 비어 있는 날짜(크롤링 대상): {dates_to_update}")
+    else:
+        print("모든 날짜 열에 최소 하나 이상의 데이터가 기록되어 있습니다.")
+
+    return dates_to_update
