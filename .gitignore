@@ -5,3 +5,4 @@ dist/
 *.xlsm
 *.spec
 TOP★점프_트래픽관리/
+__pycache__/
