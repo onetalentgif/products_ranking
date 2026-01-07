@@ -107,7 +107,7 @@ def get_all_date_texts_from_header(ws):
             break
 
         cell_str = str(cell_val).strip()
-        if "직전" in cell_str or "비고" in cell_str or "서식" in cell_str:
+        if any(kw in cell_str for kw in ["직전", "비고", "서식", "공란"]):
             break
 
         # 날짜 데이터를 텍스트로 변환

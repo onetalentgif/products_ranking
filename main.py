@@ -1,64 +1,87 @@
-from config import EXCEL_PATH, ACCOUNT
-import web_handler as wh
-import excel_handler as eh
+import os
 from openpyxl import load_workbook
-from datetime import datetime
+from config import EXCEL_PATH, ACCOUNT  # ACCOUNT는 {"user_id": "...", "user_pw": "..."} 형태
+from excel_handler import (
+    get_keyword_from_xlsm,
+    sync_date_columns_until_today,
+    get_all_date_texts_from_header,
+    update_excel_rank
+)
+from web_handler import (
+    create_driver,
+    login_success_check,
+    search_keyword,
+    extract_product_results
+)
 
 
-if __name__ == "__main__":
-    account = {"user_id": "sstrade251016", "user_pw": "a2345"}
-    main_wb = load_workbook(EXCEL_PATH, keep_vba=True)
-    main_ws = main_wb['데이터']
+def main():
+    # 엑셀 파일 로드 (매크로 유지를 위해 keep_vba=True)
+    if not os.path.exists(EXCEL_PATH):
+        print(f"파일을 찾을 수 없습니다: {EXCEL_PATH}")
+        return
 
-    # 1. 날짜 동기화
-    eh.sync_date_columns_until_today(main_ws, start_date_str="2026-01-01")
-    keywords = eh.get_keyword_from_xlsm()
+    print("엑셀 파일을 불러오는 중입니다...")
+    wb = load_workbook(EXCEL_PATH, keep_vba=True)
+    ws = wb['데이터']
 
-    # 2. 날짜-열 매핑 생성 (YYYY-MM-DD 자릿수 엄격 적용)
-    date_info_map = {}
-    for col in range(74, main_ws.max_column + 1):
-        val = main_ws.cell(row=5, column=col).value
-        if val is None: break
+    # 날짜 열 동기화 (오늘 날짜까지 열이 없으면 생성)
+    sync_date_columns_until_today(ws)
 
-        val_str = str(val).strip()
-        try:
-            # 어떠한 형식이든 datetime 객체로 바꾼 뒤 '2026-01-06' 형태로 통일
-            if isinstance(val, datetime):
-                d_str = val.strftime('%Y-%m-%d')
-            else:
-                d_str = datetime.strptime(f"2026/{val_str}", "%Y/%m/%d").strftime('%Y-%m-%d')
-            date_info_map[d_str] = col
-        except ValueError:
-            print(f"날짜가 아닌 헤더 발견 후 중단: {val_str}")
-            break
+    # 엑셀에서 타겟 날짜 리스트 및 키워드 추출
+    # 헤더(5행)에 있는 모든 날짜('2026-01-01' 형태) 가져오기
+    target_dates = get_all_date_texts_from_header(ws)
+    keywords = get_keyword_from_xlsm()
 
-    driver = wh.create_driver(account["user_id"], headless=False)
+    if not target_dates:
+        print("작업할 타겟 날짜를 찾지 못했습니다.")
+        return
+
+    # print(f"대상 날짜: {target_dates}")
+    # print(f"대상 키워드: {list(keywords)}")
+
+    # 브라우저 실행 및 로그인
+    driver = create_driver(ACCOUNT["user_id"], headless=False)
 
     try:
-        if wh.ogin_success_check(driver, account):
+        if login_success_check(driver, ACCOUNT):
+            # 각 키워드별 검색 및 데이터 추출
             for keyword in keywords:
-                # 'end' 키워드 등이 섞여 있을 경우를 대비한 방어 로직
-                if "end" in keyword.lower(): continue
+                print(f"\n>>> 키워드 검색 시작: {keyword}")
+                search_keyword(driver, keyword)
 
-                missing_dates = eh.get_missing_dates_for_keyword(main_ws, keyword, date_info_map)
-                if not missing_dates:
-                    print(f"[{keyword}] 입력할 칸이 없습니다. 패스.")
-                    continue
+                # 웹 페이지에서 결과 추출 (딕셔너리 형태: {datetime: [(kw, id, rank), ...]})
+                product_results = extract_product_results(driver, target_dates)
 
-                wh.search_keyword(driver, keyword)
-                all_results_map = wh.extract_product_results(driver, missing_dates)
+                # 추출된 결과를 엑셀 메모리에 업데이트
+                for target_date, items in product_results.items():
+                    date_str = target_date.strftime('%Y-%m-%d')  # 출력용 날짜 변환
 
-                # 결과 데이터가 있을 때만 엑셀 기록 루프 실행
-                if all_results_map:
-                    for date_text, product_results in all_results_map.items():
-                        for p_id, p_rank in product_results:
-                            eh.update_excel_rank(main_ws, p_id, keyword, p_rank, date_text)
+                    # product_results가 비었을 때
+                    if not items:
+                        print(f" [{date_str}] '{keyword}'에 대한 검색 결과가 없습니다.")
+                        continue
 
-            main_wb.save(EXCEL_PATH)
-            print("\n파일 저장 완료!")
+                    # 각 날짜에 포함된 상품 리스트를 순회 (row_keyword, product_id, rank_number)
+                    for item in items:
+                        product_keyword = item[0]  # 튜플의 첫 번째: 행 키워드
+                        product_id = item[1]  # 튜플의 두 번째: ID
+                        product_rank = item[2]  # 튜플의 세 번째: 순위
+
+                        # 엑셀의 해당 날짜/키워드/ID 행을 찾아 순위 입력
+                        update_excel_rank(ws, product_id, product_keyword, product_rank, date_str)
+
+        # 최종 저장 (작업이 끝난 후 한 번에 저장)
+        print("\n데이터 기록 완료. 엑셀 파일을 저장합니다...")
+        wb.save(EXCEL_PATH)
+        print("저장이 완료되었습니다.")
 
     except Exception as e:
         print(f"실행 중 오류 발생: {e}")
     finally:
-        main_wb.close()
+        wb.close()
         driver.quit()
+
+
+if __name__ == "__main__":
+    main()
