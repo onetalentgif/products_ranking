@@ -58,7 +58,12 @@ def sync_date_columns_until_today(ws, start_date_str="2026-01-01"):
         # 5행에서 해당 날짜가 이미 있는지 확인
         is_exist = False
 
-        cell_val = ws.cell(row=5, column=74).value
+        # cell_val = ws.cell(row=5, column=74).value
+
+        for col in range(74, fixed_start_col):
+            cell_val = ws.cell(row=5, column=col).value
+        if cell_val is None:
+            continue
 
         # 날짜 객체 또는 문자열 비교
         if isinstance(cell_val, datetime):
@@ -68,6 +73,7 @@ def sync_date_columns_until_today(ws, start_date_str="2026-01-01"):
 
         if check_str == date_header:
             is_exist = True
+            break
 
         # 날짜가 없으면 열을 삽입하고 날짜 입력
         if not is_exist:
@@ -81,6 +87,8 @@ def sync_date_columns_until_today(ws, start_date_str="2026-01-01"):
             fixed_start_col += 1
 
         current_date += timedelta(days=1)
+
+
 
 def get_all_date_texts_from_header(ws):
     """
