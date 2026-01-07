@@ -54,6 +54,9 @@ def login_top_with_send_keys(driver, account, debug: bool = True):
         time.sleep(1)
 
         # PW 한 글자씩 타이핑
+        pw_ele.clear()
+        time.sleep(0.5)
+
         pw_ele.click()
         type_like_human(pw_ele, account["user_pw"])
         time.sleep(1)
@@ -169,25 +172,17 @@ def search_keyword(driver, keyword: str, timeout: int = 10):
         print(f"키워드 검색 중 오류 발생: {e}")
 
 
+# target_dates = ['2026-01-07', '2026-01-08'] (텍스트 형식, 반드시 날짜 순서 유지해야 함, 오늘 날짜까지만!)
 def extract_product_results(driver, target_dates: list, timeout: int = 10):
     wait = WebDriverWait(driver, timeout)
 
-    product_results = {d_text: [] for d_text in target_dates}
+    # 타겟 날짜 텍스트를 datetime 객체로 변환 (리스트)
+    target_datetimes = [datetime.strptime(target_date, '%Y-%m-%d') for target_date in target_dates]
 
-    # 비교를 위해 타겟 날짜들을 datetime 객체로 변환
-    target_dt_list = [datetime.strptime(d, '%Y-%m-%d') for d in target_dates]
+    product_results = {target_datetime: [] for target_datetime in target_datetimes}  # product_results = { datetime(2026, 1, 7): [], datetime(2026, 1, 8): [] }
 
     try:
-        # [수정] 테이블의 데이터(tr)가 최소한 하나라도 나타날 때까지 기다림
-        # 검색 후 로딩 시간을 고려하여 확실하게 대기합니다.
-        time.sleep(1.5)
-
-        try:
-            # tbody 안에 tr이 있는지 확인
-            rows = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//tbody/tr")))
-        except TimeoutException:
-            print("테이블 응답 시간 초과: 결과가 없거나 로딩이 너무 느립니다.")
-            return product_results
+        rows = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//tbody/tr")))
 
         # '조회 결과 없음' 문구가 있는 경우 처리
         if len(rows) == 0 or (len(rows) == 1 and "정보가 없습니다" in rows[0].text):
@@ -196,34 +191,38 @@ def extract_product_results(driver, target_dates: list, timeout: int = 10):
 
         for row in rows:
             try:
-                # 시작일(12)과 종료일(13) 추출
                 start_date_text = row.find_element(By.XPATH, "./td[12]").text.strip()
-                end_date_text = row.find_element(By.XPATH, "./td[13]").text.strip()
-
-                if not start_date_text or not end_date_text:
-                    continue
-
                 start_date = datetime.strptime(start_date_text, '%Y-%m-%d')
+
+                end_date_text = row.find_element(By.XPATH, "./td[13]").text.strip()
                 end_date = datetime.strptime(end_date_text, '%Y-%m-%d')
 
-                # 타겟 날짜 중 가장 오래된 날짜보다 현재 데이터의 종료일이 더 과거라면 건너뜀
-                if end_date < min(target_dt_list):
+                # 종료일이 지났으면(타겟 날짜에 해당하는 기간이 없으면) 중단
+                if end_date < min(target_datetimes):
+                    break
+
+                # 시작일이 아직 안왔으면 다음 행으로 이동
+                if start_date > max(target_datetimes):
                     continue
 
-                # 순위(9) 및 ID(8) 추출
-                rank_text = row.find_element(By.XPATH, "./td[9]").text.strip()
-                rank_number = ""
-                if "순위밖" not in rank_text and "위" in rank_text:
-                    rank_number = rank_text.split('위')[0].strip()
-
-                url = row.find_element(By.XPATH, "./td[8]//a").get_attribute("href")
-                last_id = url.split("=")[-1]
-
                 # 모든 타겟 날짜에 대해 매칭 확인
-                for i, target_dt in enumerate(target_dt_list):
-                    if start_date <= target_dt <= end_date:
-                        product_results[target_dates[i]].append((last_id, rank_number))
-                        print(f"매칭 발견: {target_dates[i]} | ID: {last_id} | 순위: {rank_number}")
+                for i, target_datetime in enumerate(target_datetimes):
+                    if start_date <= target_datetime <= end_date:
+
+                        rank_text = row.find_element(By.XPATH, "./td[9]").text.strip()
+                        rank_number = ""
+                        if "순위밖" not in rank_text and "위" in rank_text:
+                            rank_number = rank_text.split('위')[0].strip()
+
+                        url = row.find_element(By.XPATH, "./td[8]//a").get_attribute("href")
+                        product_id = url.split("=")[-1]
+
+                        product_results[target_datetimes[i]].append((product_id, rank_number))
+                        print(f"매칭 발견: {target_datetimes[i]} | ID: {product_id} | 순위: {rank_number}")
+
+                    else:
+                        print(f"{target_datetime}가 아니므로 작업 중단")
+                        break  # 더이상 다음 row 보지 않고 for문 탈출 (내림차순이므로)
 
             except Exception:
                 # 개별 행 파싱 실패 시 다음 행으로 진행
