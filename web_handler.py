@@ -178,6 +178,8 @@ def extract_product_results(driver, target_dates: list, timeout: int = 10):
 
     # 타겟 날짜 텍스트를 datetime 객체로 변환 (리스트)
     target_datetimes = [datetime.strptime(target_date, '%Y-%m-%d') for target_date in target_dates]
+    min_target = min(target_datetimes)
+    max_target = max(target_datetimes)
 
     product_results = {target_datetime: [] for target_datetime in target_datetimes}  # product_results = { datetime(2026, 1, 7): [], datetime(2026, 1, 8): [] }
 
@@ -198,11 +200,11 @@ def extract_product_results(driver, target_dates: list, timeout: int = 10):
                 end_date = datetime.strptime(end_date_text, '%Y-%m-%d')
 
                 # 종료일이 지났으면(타겟 날짜에 해당하는 기간이 없으면) 중단
-                if end_date < min(target_datetimes):
+                if end_date < min_target:
                     break
 
                 # 시작일이 아직 안왔으면 다음 행으로 이동
-                if start_date > max(target_datetimes):
+                if start_date > max_target:
                     continue
 
                 # 모든 타겟 날짜에 대해 매칭 확인

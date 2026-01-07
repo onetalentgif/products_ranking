@@ -11,7 +11,7 @@ def get_base_dir() -> str:
 BASE_DIR = get_base_dir()
 # BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROFILE_ROOT_DIR = os.path.join(BASE_DIR, "Chrome_profile")
-EXCEL_PATH = os.path.join(BASE_DIR, 'TOP★점프_트래픽관리_순위입력_전.xlsm')
+EXCEL_PATH = os.path.join(BASE_DIR, 'TOP★점프_트래픽관리.xlsm')
 
 # 웹 설정
 TOP_ADS_URL = "https://top.re.kr/ads"
