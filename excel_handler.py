@@ -1,4 +1,5 @@
 import os
+import xlwings as xw
 from openpyxl import load_workbook
 from datetime import datetime, timedelta
 from config import EXCEL_PATH
@@ -10,29 +11,48 @@ def get_keyword_from_xlsm():
         return set()
 
     # 1. 엑셀 로드
-    # keep_vba=True: 매크로 유지
-    # data_only=True: 수식이 아닌 '텍스트 결과값'만 가져옴
-    temp_wb = load_workbook(EXCEL_PATH, keep_vba=True, data_only=True)
-    ws = temp_wb['데이터']
+    # # keep_vba=True: 매크로 유지
+    # # data_only=True: 수식이 아닌 '텍스트 결과값'만 가져옴
+    # wb = load_workbook(EXCEL_PATH, keep_vba=True, data_only=True)
+    # ws = wb['데이터']
+    wb = xw.Book(EXCEL_PATH)
+    ws = wb.sheets['데이터']
 
     # 2. 키워드 가져오기
+    # keywords = set()
+    # for row in ws.iter_rows(min_row=7, min_col=10, max_col=10):
+    #     cell_value = row[0].value # iter_rows는 한 행을 셀들의 묶음(튜플)으로 반환
+    #
+    #     if cell_value is None:
+    #         continue
+    #
+    #     keyword = str(cell_value).strip()
+    #
+    #     if not keyword:
+    #         continue
+    #
+    #     keywords.add(keyword)
+
+    # J열(10번째) 7행부터 마지막 데이터가 있는 행까지 한 번에 가져오기
+    last_row = ws.range('J' + str(ws.cells.last_cell.row)).end('up').row
+    if last_row < 7:
+        wb.close()
+        return set()
+
+    # 7행부터 시트 전체 마지막 행까지의 J열(10번째) 데이터를 가져옴
+    values = ws.range((7, 10), (last_row, 10)).value
+
+    if not isinstance(values, list):
+        values = [values]
+
     keywords = set()
-    for row in ws.iter_rows(min_row=7, min_col=10, max_col=10):
-        cell_value = row[0].value # iter_rows는 한 행을 셀들의 묶음(튜플)으로 반환
-
-        if cell_value is None:
-            continue
-
-        keyword = str(cell_value).strip()
-
-        if not keyword:
-            continue
-
-        keywords.add(keyword)
+    for cell_value in values:
+        if cell_value:
+            keywords.add(str(cell_value).strip())
 
     print(f"키워드 추출: {list(keywords)}")
 
-    temp_wb.close()
+    wb.close()
     return keywords
 
 
@@ -56,24 +76,38 @@ def sync_date_columns_until_today(ws, start_date_str="2026-01-01"):
         date_header = f"{current_date.month}/{current_date.day}"
         is_exist = False    # 5행에서 해당 날짜가 이미 있는지 확인
 
-        # cell_val = ws.cell(row=5, column=74).value
+        # # cell_val = ws.cell(row=5, column=74).value
+        #
+        # # 현재 5행에 해당 날짜가 이미 있는지 끝까지 검사
+        # last_col = ws.max_column
+        # for col in range(start_search_col, last_col+1):
+        #     cell_val = ws.cell(row=5, column=col).value
+        #     if cell_val is None:
+        #         continue
+        #
+        #     # 날짜 (객체 또는 문자열) 비교
+        #     if isinstance(cell_val, datetime):
+        #         check_str = f"{cell_val.month}/{cell_val.day}"
+        #     else:
+        #         check_str = str(cell_val).strip()
+        #
+        #     if check_str == date_header:
+        #         is_exist = True
+        #         break
 
-        # 현재 5행에 해당 날짜가 이미 있는지 끝까지 검사
-        last_col = ws.max_column
-        for col in range(start_search_col, last_col+1):
-            cell_val = ws.cell(row=5, column=col).value
-            if cell_val is None:
-                continue
+        # 5행의 헤더들을 리스트로 가져와서 비교 (속도 최적화)
+        last_col = ws.range(5, ws.cells.last_cell.column).end('left').column
+        if last_col < start_search_col: last_col = start_search_col
 
-            # 날짜 (객체 또는 문자열) 비교
-            if isinstance(cell_val, datetime):
-                check_str = f"{cell_val.month}/{cell_val.day}"
-            else:
-                check_str = str(cell_val).strip()
+        row_5_values = ws.range((5, start_search_col), (5, last_col + 5)).value
 
-            if check_str == date_header:
-                is_exist = True
-                break
+        if row_5_values:
+            for val in row_5_values:
+                if val is None: continue
+                check_str = f"{val.month}/{val.day}" if isinstance(val, datetime) else str(val).strip()
+                if check_str == date_header:
+                    is_exist = True
+                    break
 
         # 날짜가 없으면 "가장 오른쪽 끝" 혹은 "특정 고정필드 직전"에 추가
         if not is_exist:
@@ -86,8 +120,12 @@ def sync_date_columns_until_today(ws, start_date_str="2026-01-01"):
                     break
                 target_col += 1
 
-            ws.insert_cols(target_col)
-            ws.cell(row=5, column=target_col).value = date_header
+            # ws.insert_cols(target_col)
+            # ws.cell(row=5, column=target_col).value = date_header
+
+            # xlwings의 api를 사용하여 엑셀 열 삽입 기능 호출
+            ws.range((1, target_col)).api.EntireColumn.Insert()
+            ws.range(5, target_col).value = date_header
             print(f"새 열 추가됨: {target_col}번째 열 ({date_header})")
 
         current_date += timedelta(days=1)
@@ -162,46 +200,76 @@ def update_excel_rank(ws, target_vi_id, target_keyword, rank_value, target_date)
     dt = datetime.strptime(target_date, '%Y-%m-%d')
     search_header = f"{dt.month}/{dt.day}"
 
-    for col in range(74, ws.max_column + 1):
-        cell_val = ws.cell(row=5, column=col).value
-        if cell_val is None: continue
+    # for col in range(74, ws.max_column + 1):
+    #     cell_val = ws.cell(row=5, column=col).value
+    #     if cell_val is None: continue
+    #
+    #     # 엑셀 헤더가 날짜 객체인지 텍스트인지 판별하여 비교
+    #     header = f"{cell_val.month}/{cell_val.day}" if isinstance(cell_val, datetime) else str(cell_val).strip()
+    #
+    #     if header == search_header:
+    #         target_col = col
+    #         break
 
-        # 엑셀 헤더가 날짜 객체인지 텍스트인지 판별하여 비교
-        header = f"{cell_val.month}/{cell_val.day}" if isinstance(cell_val, datetime) else str(cell_val).strip()
-
+    # [수정] 날짜 열 찾기 (리스트 내 탐색)
+    row_5_values = ws.range((5, 74), (5, 150)).value
+    target_col = None
+    for i, val in enumerate(row_5_values):
+        if val is None: continue
+        header = f"{val.month}/{val.day}" if isinstance(val, datetime) else str(val).strip()
         if header == search_header:
-            target_col = col
+            target_col = 74 + i
             break
 
     if not target_col:
         print(f"엑셀에서 {search_header} 열을 찾지 못했습니다.")
         return
 
-    COL_VI_ID = 6  # F열
-    COL_KEYWORD = 10  # J열
+    # [수정] ID(6열)와 키워드(10열) 전체 데이터를 가져와서 행 매칭 (반복문 내 셀 접근 최소화)
+    last_row = ws.range('J' + str(ws.cells.last_cell.row)).end('up').row
+    ids = ws.range((7, 6), (last_row, 6)).value
+    kws = ws.range((7, 10), (last_row, 10)).value
 
-    found = False
-    for row in range(7, ws.max_row + 1):
-        # [수정] ID 비교 시 float 형태(.0)가 생기지 않도록 정수형 처리 후 문자열 변환
-        raw_vi_id = ws.cell(row=row, column=COL_VI_ID).value
+    if not isinstance(ids, list): ids = [ids]
+    if not isinstance(kws, list): kws = [kws]
+
+    for i, (raw_vi_id, kw) in enumerate(zip(ids, kws)):
         try:
-            # 12345.0 같은 데이터를 '12345'로 변환
             vi_id = str(int(float(raw_vi_id))) if raw_vi_id else ""
         except:
             vi_id = str(raw_vi_id or "").strip()
 
-        keyword = str(ws.cell(row=row, column=COL_KEYWORD).value or "").strip()
-
-        # ID와 키워드 동시 비교
-        if vi_id == str(target_vi_id) and keyword == target_keyword:
-            ws.cell(row=row, column=target_col).value = rank_value
-            print(f"성공: {row}행 {target_col}열에 '{rank_value}' 입력")
-            found = True
+        if vi_id == str(target_vi_id) and str(kw).strip() == target_keyword:
+            # [수정] 일치하는 셀에 값 입력
+            ws.range(7 + i, target_col).value = rank_value
+            print(f"성공: {7 + i}행 {target_col}열에 '{rank_value}' 입력")
             break
 
-    if not found:
-        # 디버깅을 위해 찾지 못한 정보 출력
-        pass
+    # COL_VI_ID = 6  # F열
+    # COL_KEYWORD = 10  # J열
+    #
+    # found = False
+    # for row in range(7, ws.max_row + 1):
+    #     # [수정] ID 비교 시 float 형태(.0)가 생기지 않도록 정수형 처리 후 문자열 변환
+    #     raw_vi_id = ws.cell(row=row, column=COL_VI_ID).value
+    #     try:
+    #         # 12345.0 같은 데이터를 '12345'로 변환
+    #         vi_id = str(int(float(raw_vi_id))) if raw_vi_id else ""
+    #     except:
+    #         vi_id = str(raw_vi_id or "").strip()
+    #
+    #     keyword = str(ws.cell(row=row, column=COL_KEYWORD).value or "").strip()
+    #
+    #     # ID와 키워드 동시 비교
+    #     if vi_id == str(target_vi_id) and keyword == target_keyword:
+    #         ws.cell(row=row, column=target_col).value = rank_value
+    #         print(f"성공: {row}행 {target_col}열에 '{rank_value}' 입력")
+    #         found = True
+    #         break
+    #
+    # if not found:
+    #     # 디버깅을 위해 찾지 못한 정보 출력
+    #     pass
 
 
 def get_dates_requiring_update(ws):
@@ -212,8 +280,17 @@ def get_dates_requiring_update(ws):
     COL_BV = 74
     dates_to_update = []
 
-    for col in range(COL_BV, ws.max_column + 1):
-        header_val = ws.cell(row=5, column=col).value
+    # [수정] 헤더 행을 한 번에 가져옴
+    max_col = ws.range(5, ws.cells.last_cell.column).end('left').column
+    if max_col < COL_BV: max_col = COL_BV
+    headers = ws.range((5, COL_BV), (5, max_col + 1)).value
+
+    # [수정] J열 기준으로 데이터가 있는 마지막 행 번호 파악
+    last_row = ws.range('J' + str(ws.cells.last_cell.row)).end('up').row
+
+    # for col in range(COL_BV, ws.max_column + 1):
+    #     header_val = ws.cell(row=5, column=col).value
+    for i, header_val in enumerate(headers):
         if header_val is None: break
 
         header_str = str(header_val).strip()
@@ -221,15 +298,25 @@ def get_dates_requiring_update(ws):
         if any(kw in header_str for kw in ["직전", "비고", "서식", "공란"]):
             break
 
-        # --- 수정된 로직 시작 ---
-        has_any_data = False
-        for row in range(7, ws.max_row + 1):
-            rank_val = ws.cell(row=row, column=col).value
+        # has_any_data = False
+        # for row in range(7, ws.max_row + 1):
+        #     rank_val = ws.cell(row=row, column=col).value
+        #
+        #     # 셀 값이 None이 아니고, 공백 제외 문자열이 존재하면 데이터가 있는 것으로 간주
+        #     if rank_val is not None and str(rank_val).strip() != "":
+        #         has_any_data = True
+        #         break  # 하나라도 데이터가 있으면 이 날짜는 검사 종료
 
-            # 셀 값이 None이 아니고, 공백 제외 문자열이 존재하면 데이터가 있는 것으로 간주
-            if rank_val is not None and str(rank_val).strip() != "":
-                has_any_data = True
-                break  # 하나라도 데이터가 있으면 이 날짜는 검사 종료
+        col_idx = COL_BV + i
+
+        # [수정] 해당 열 전체 데이터를 리스트로 가져와서 빈칸 여부 검사 (성능 대폭 향상)
+        col_data = ws.range((7, col_idx), (last_row, col_idx)).value
+
+        if isinstance(col_data, list):
+            has_any_data = any(x is not None and str(x).strip() != "" for x in col_data)
+        else:
+            has_any_data = col_data is not None and str(col_data).strip() != ""
+
 
         # 데이터가 '하나도 없는' 날짜만 업데이트 대상으로 선정
         if not has_any_data:
@@ -245,11 +332,10 @@ def get_dates_requiring_update(ws):
                     formatted_date = header_str
 
             dates_to_update.append(formatted_date)
-        # --- 수정된 로직 끝 ---
 
-    if dates_to_update:
-        print(f"데이터가 완전히 비어 있는 날짜(크롤링 대상): {dates_to_update}")
-    else:
-        print("모든 날짜 열에 최소 하나 이상의 데이터가 기록되어 있습니다.")
+    # if dates_to_update:
+    #     print(f"데이터가 완전히 비어 있는 날짜(크롤링 대상): {dates_to_update}")
+    # else:
+    #     print("모든 날짜 열에 최소 하나 이상의 데이터가 기록되어 있습니다.")
 
     return dates_to_update
