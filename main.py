@@ -132,7 +132,7 @@ def main():
         # [수정] 작업 완료 후 반드시 엑셀을 닫아 프로세스 점유 방지
         wb.close()
         print("엑셀 연결을 종료했습니다.")
-        # app.quit() # 만약 App(visible=False)를 썼다면 앱 자체도 종료해야 함
+        app.quit() # 만약 App(visible=False)를 썼다면 앱 자체도 종료해야 함
 
 if __name__ == "__main__":
     main()

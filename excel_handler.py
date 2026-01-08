@@ -13,66 +13,71 @@ def get_keyword_from_xlsm():
     app = xw.App(visible=False)  # 키워드만 뽑을 때는 백그라운드 실행
     app.display_alerts = False  # 팝업 알림 차단
 
-    # 1. 엑셀 로드
-    # # # keep_vba=True: 매크로 유지
-    # # # data_only=True: 수식이 아닌 '텍스트 결과값'만 가져옴
-    # # wb = load_workbook(EXCEL_PATH, keep_vba=True, data_only=True)
-    # # ws = wb['데이터']
-    # wb = xw.Book(EXCEL_PATH)
-
-    # [수정] update_links=False로 팝업을 띄우지 않고 열기
-    wb = app.books.open(EXCEL_PATH, update_links=False)
-
-    # [수정] 열린 직후 코드로 직접 외부 링크 업데이트 명령
     try:
-        # 1은 엑셀 통합 문서 링크를 의미합니다.
-        links = wb.api.LinkSources(1)
-        if links is not None:
-            # 리스트가 비어있지 않은지 확인 후 업데이트
-            wb.api.UpdateLink(Name=links)
-            print("외부 연결 데이터 업데이트 완료.")
-    except Exception as update_err:
-        # 업데이트 중 오류가 나도 키워드 추출은 계속 진행하도록 처리
-        print(f"외부 링크 업데이트 건너뜀 (사유: {update_err})")
+        # 1. 엑셀 로드
+        # # # keep_vba=True: 매크로 유지
+        # # # data_only=True: 수식이 아닌 '텍스트 결과값'만 가져옴
+        # # wb = load_workbook(EXCEL_PATH, keep_vba=True, data_only=True)
+        # # ws = wb['데이터']
+        # wb = xw.Book(EXCEL_PATH)
 
-    ws = wb.sheets['데이터']
+        # [수정] update_links=False로 팝업을 띄우지 않고 열기
+        wb = app.books.open(EXCEL_PATH, update_links=False)
 
-    # 2. 키워드 가져오기
-    # keywords = set()
-    # for row in ws.iter_rows(min_row=7, min_col=10, max_col=10):
-    #     cell_value = row[0].value # iter_rows는 한 행을 셀들의 묶음(튜플)으로 반환
-    #
-    #     if cell_value is None:
-    #         continue
-    #
-    #     keyword = str(cell_value).strip()
-    #
-    #     if not keyword:
-    #         continue
-    #
-    #     keywords.add(keyword)
+        # [수정] 열린 직후 코드로 직접 외부 링크 업데이트 명령
+        try:
+            # 1은 엑셀 통합 문서 링크를 의미합니다.
+            links = wb.api.LinkSources(1)
+            if links is not None:
+                # 리스트가 비어있지 않은지 확인 후 업데이트
+                wb.api.UpdateLink(Name=links)
+                print("외부 연결 데이터 업데이트 완료.")
+        except Exception as update_err:
+            # 업데이트 중 오류가 나도 키워드 추출은 계속 진행하도록 처리
+            print(f"외부 링크 업데이트 건너뜀 (사유: {update_err})")
 
-    # J열(10번째) 7행부터 마지막 데이터가 있는 행까지 한 번에 가져오기
-    last_row = ws.range('J' + str(ws.api.Rows.Count)).end('up').row
-    if last_row < 7:
+        ws = wb.sheets['데이터']
+
+        # 2. 키워드 가져오기
+        # keywords = set()
+        # for row in ws.iter_rows(min_row=7, min_col=10, max_col=10):
+        #     cell_value = row[0].value # iter_rows는 한 행을 셀들의 묶음(튜플)으로 반환
+        #
+        #     if cell_value is None:
+        #         continue
+        #
+        #     keyword = str(cell_value).strip()
+        #
+        #     if not keyword:
+        #         continue
+        #
+        #     keywords.add(keyword)
+
+        # J열(10번째) 7행부터 마지막 데이터가 있는 행까지 한 번에 가져오기
+        last_row = ws.range('J' + str(ws.api.Rows.Count)).end('up').row
+        if last_row < 7:
+            wb.close()
+            return set()
+
+        # 7행부터 시트 전체 마지막 행까지의 J열(10번째) 데이터를 가져옴
+        values = ws.range((7, 10), (last_row, 10)).value
+
+        if not isinstance(values, list):
+            values = [values]
+
+        keywords = set()
+        for cell_value in values:
+            if cell_value:
+                keywords.add(str(cell_value).strip())
+
+        print(f"키워드 추출: {list(keywords)}")
+
         wb.close()
-        return set()
+        return keywords
 
-    # 7행부터 시트 전체 마지막 행까지의 J열(10번째) 데이터를 가져옴
-    values = ws.range((7, 10), (last_row, 10)).value
-
-    if not isinstance(values, list):
-        values = [values]
-
-    keywords = set()
-    for cell_value in values:
-        if cell_value:
-            keywords.add(str(cell_value).strip())
-
-    print(f"키워드 추출: {list(keywords)}")
-
-    wb.close()
-    return keywords
+    finally:
+            # 작업 완료 후 앱 종료
+            app.quit()
 
 
 
@@ -166,7 +171,7 @@ def get_all_date_texts_from_header(ws):
     # BV열(74)부터 오른쪽으로 하나씩 검사
     for col in range(COL_BV, max_col + 1):
         # cell_val = ws.cell(row=5, column=col).value
-        cell_val = ws.range(row=5, column=col).value
+        cell_val = ws.range(5, col).value
 
         # 빈 칸이거나 날짜가 아닌 고정 헤더를 만나면 탐색 중단
         if cell_val is None:
@@ -341,9 +346,14 @@ def get_dates_requiring_update(ws):
         col_data = ws.range((7, col_idx), (last_row, col_idx)).value
 
         if isinstance(col_data, list):
-            has_any_data = any(x is not None and str(x).strip() != "" for x in col_data)
+            has_any_data = any(
+                x is not None and str(x).strip() not in ["", "0", "0.0", "-", "0.0"]
+                for x in col_data
+            )
         else:
-            has_any_data = col_data is not None and str(col_data).strip() != ""
+            has_any_data = (
+                    col_data is not None and str(col_data).strip() not in ["", "0", "0.0", "-"]
+            )
 
 
         # 데이터가 '하나도 없는' 날짜만 업데이트 대상으로 선정
