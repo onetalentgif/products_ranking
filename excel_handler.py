@@ -313,13 +313,17 @@ def get_dates_requiring_update(ws):
     COL_BV = 74
     dates_to_update = []
 
-    # [수정] 헤더 행을 한 번에 가져옴
-    max_col = ws.range(5, ws.cells.last_cell.column).end('left').column
+    # 헤더 및 마지막 행 번호 파악
+    max_col = ws.range(5, ws.api.Columns.Count).end('left').column
     if max_col < COL_BV: max_col = COL_BV
-    headers = ws.range((5, COL_BV), (5, max_col + 1)).value
 
-    # [수정] J열 기준으로 데이터가 있는 마지막 행 번호 파악
-    last_row = ws.range('J' + str(ws.cells.last_cell.row)).end('up').row
+    headers = ws.range((5, COL_BV), (5, max_col + 1)).value
+    # J열 기준으로 데이터가 있는 마지막 행 번호 파악
+    last_row = ws.range('J' + str(ws.api.Rows.Count)).end('up').row
+
+    # [수정] Q열(17번째 열)의 행 구분 텍스트를 가져옵니다.
+    row_types = ws.range((7, 17), (last_row, 17)).value
+    if not isinstance(row_types, list): row_types = [row_types]
 
     # for col in range(COL_BV, ws.max_column + 1):
     #     header_val = ws.cell(row=5, column=col).value
@@ -344,21 +348,26 @@ def get_dates_requiring_update(ws):
 
         # [수정] 해당 열 전체 데이터를 리스트로 가져와서 빈칸 여부 검사 (성능 대폭 향상)
         col_data = ws.range((7, col_idx), (last_row, col_idx)).value
+        if not isinstance(col_data, list): col_data = [col_data]
 
-        if isinstance(col_data, list):
-            has_any_data = any(
-                x is not None and str(x).strip() not in ["", "0", "0.0", "-", "0.0"]
-                for x in col_data
-            )
-        else:
-            has_any_data = (
-                    col_data is not None and str(col_data).strip() not in ["", "0", "0.0", "-"]
-            )
+        # [핵심 수정 로직]
+        # 해당 열에서 '순위'라고 적힌 행들에 대해서만 데이터가 있는지 확인합니다.
+        # 판매수량, 광고, 가구매 행에 데이터가 있어도 '순위' 행들이 비어있으면 수집 대상에 포함됩니다.
+        has_actual_rank_data = False
+        for idx, rank_val in enumerate(col_data):
+            # Q열의 텍스트를 확인하여 '순위' 포함 여부 체크
+            row_type = str(row_types[idx]).strip() if idx < len(row_types) and row_types[idx] else ""
 
+            # 행 타입에 '순위'라는 글자가 포함된 행만 순위 데이터 존재 여부를 검사합니다.
+            if "순위" in row_type:
+                clean_val = str(rank_val).strip() if rank_val is not None else ""
+                # 비어있지 않으면서 '0', '-', 'None'이 아닌 실제 순위 숫자가 있는지 확인
+                if clean_val not in ["", "0", "0.0", "-", "None"]:
+                    has_actual_rank_data = True
+                    break
 
-        # 데이터가 '하나도 없는' 날짜만 업데이트 대상으로 선정
-        if not has_any_data:
-            # 날짜 형식 통일 (YYYY-MM-DD)
+        # 순위 데이터가 '하나도 없는' 날짜만 업데이트 대상으로 선정
+        if not has_actual_rank_data:
             if isinstance(header_val, datetime):
                 formatted_date = header_val.strftime('%Y-%m-%d')
             else:
@@ -368,7 +377,6 @@ def get_dates_requiring_update(ws):
                     formatted_date = dt.strftime('%Y-%m-%d')
                 except:
                     formatted_date = header_str
-
             dates_to_update.append(formatted_date)
 
     # if dates_to_update:
