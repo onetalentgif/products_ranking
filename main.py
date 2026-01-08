@@ -121,13 +121,16 @@ def main():
 
                         print(f"  - {page_num}페이지에서 {found_count}건 업데이트 완료.")
 
-                        # 다음 페이지로 이동 시도
-                        if page_num < MAX_PAGES:
-                            if go_to_next_page(driver):
-                                page_num += 1
-                            else:
-                                print(f"  - '{keyword}'의 모든 페이지 탐색 종료.")
-                                break
+                        if page_num == MAX_PAGES:
+                            print(f"  - 최대 설정인 {MAX_PAGES}페이지 도달. 다음 키워드로 넘어갑니다.")
+                            break
+
+                        # 최대 페이지 미만일 때만 다음 페이지 이동 시도
+                        if go_to_next_page(driver):
+                            page_num += 1
+                        else:
+                            print(f"  - '{keyword}'의 모든 페이지 탐색 종료.")
+                            break
 
             # 작업이 끝난 후 한 번에 저장
             print("\n데이터 기록 완료. 엑셀 파일을 저장합니다...")
