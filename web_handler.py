@@ -203,8 +203,9 @@ def extract_product_results(driver, target_dates: list, timeout: int = 10):
 
                 # 종료일이 지났으면(타겟 날짜에 해당하는 기간이 없으면) 중단
                 if end_date < min_target:
-                    print(f"종료일({end_date_text})이 지났으므로 탐색 종료")
-                    break   # break 로직은 데이터가 날짜순일 때만 유효
+                    # print(f"종료일({end_date_text})이 지났으므로 탐색 종료")
+                    # break   # break 로직은 데이터가 날짜순일 때만 유효
+                    continue
 
                 # 시작일이 아직 안왔으면 다음 행으로 이동
                 if start_date > max_target:
