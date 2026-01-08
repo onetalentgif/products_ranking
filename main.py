@@ -1,7 +1,7 @@
 import os
 import xlwings as xw
 from openpyxl import load_workbook
-from config import EXCEL_PATH, ACCOUNT  # ACCOUNT는 {"user_id": "...", "user_pw": "..."} 형태
+from config import EXCEL_PATH, ACCOUNT, MAX_PAGES
 from excel_handler import (
     get_keyword_from_xlsm,
     sync_date_columns_until_today,
@@ -14,7 +14,7 @@ from web_handler import (
     search_keyword,
     extract_product_results,
     delete_chrome_cache,
-    kill_chrome_processes
+    kill_chrome_processes, go_to_next_page
 )
 
 
@@ -91,26 +91,43 @@ def main():
                     print(f"\n>>> 키워드 검색 시작: {keyword}")
                     search_keyword(driver, keyword)
 
-                    # 웹 페이지에서 결과 추출 (딕셔너리 형태: {datetime: [(kw, id, rank), ...]})
-                    product_results = extract_product_results(driver, target_dates)
+                    page_num = 1
+                    while page_num <= MAX_PAGES:
+                        print(f"  - {page_num}페이지 추출 중...")
 
-                    # 추출된 결과를 엑셀 메모리에 업데이트
-                    for target_date, items in product_results.items():
-                        date_str = target_date.strftime('%Y-%m-%d')  # 출력용 날짜 변환
+                        # 현재 페이지에서 결과 추출 (딕셔너리 형태: {datetime: [(kw, id, rank), ...]})
+                        product_results = extract_product_results(driver, target_dates)
 
-                        # product_results가 비었을 때
-                        if not items:
-                            print(f" [{date_str}] '{keyword}'에 대한 검색 결과가 없습니다.")
-                            continue
 
-                        # 각 날짜에 포함된 상품 리스트를 순회 (row_keyword, product_id, rank_number)
-                        for item in items:
-                            product_keyword = item[0]  # 튜플의 첫 번째: 행 키워드
-                            product_id = item[1]  # 튜플의 두 번째: ID
-                            product_rank = item[2]  # 튜플의 세 번째: 순위
+                        # 추출된 결과를 엑셀 메모리에 업데이트
+                        found_count = 0
+                        for target_date, items in product_results.items():
+                            date_str = target_date.strftime('%Y-%m-%d')  # 출력용 날짜 변환
 
-                            # 엑셀의 해당 날짜/키워드/ID 행을 찾아 순위 입력
-                            update_excel_rank(ws, product_id, product_keyword, product_rank, date_str)
+                            # product_results가 비었을 때
+                            if not items:
+                                print(f" [{date_str}] '{keyword}'에 대한 검색 결과가 없습니다.")
+                                continue
+
+                            # 각 날짜에 포함된 상품 리스트를 순회 (row_keyword, product_id, rank_number)
+                            for item in items:
+                                product_keyword = item[0]  # 튜플의 첫 번째: 행 키워드
+                                product_id = item[1]  # 튜플의 두 번째: ID
+                                product_rank = item[2]  # 튜플의 세 번째: 순위
+
+                                # 엑셀의 해당 날짜/키워드/ID 행을 찾아 순위 입력
+                                update_excel_rank(ws, product_id, product_keyword, product_rank, date_str)
+                                found_count += 1
+
+                        print(f"  - {page_num}페이지에서 {found_count}건 업데이트 완료.")
+
+                        # 다음 페이지로 이동 시도
+                        if page_num < MAX_PAGES:
+                            if go_to_next_page(driver):
+                                page_num += 1
+                            else:
+                                print(f"  - '{keyword}'의 모든 페이지 탐색 종료.")
+                                break
 
             # 작업이 끝난 후 한 번에 저장
             print("\n데이터 기록 완료. 엑셀 파일을 저장합니다...")

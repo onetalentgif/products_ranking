@@ -244,6 +244,34 @@ def extract_product_results(driver, target_dates: list, timeout: int = 10):
     return product_results
 
 
+def go_to_next_page(driver, timeout: int = 5):
+    """
+    하단의 '>' (다음 페이지) 버튼을 찾아 클릭합니다.
+    클릭 성공 시 True, 마지막 페이지거나 실패 시 False를 반환합니다.
+    """
+    try:
+        wait = WebDriverWait(driver, timeout)
+        # title='다음 페이지' 속성을 가진 버튼을 찾음
+        next_btn = wait.until(
+            EC.presence_of_element_located((By.XPATH, "//button[@title='다음 페이지']"))
+        )
+
+        # 버튼이 disabled(비활성화) 상태이면 마지막 페이지임
+        if next_btn.get_attribute("disabled") is not None:
+            return False
+
+        # 페이지 하단으로 스크롤 후 클릭 (가끔 요소가 가려지는 경우 대비)
+        driver.execute_script("arguments[0].scrollIntoView(true);", next_btn)
+        time.sleep(0.5)
+        driver.execute_script("arguments[0].click();", next_btn)
+
+        # 페이지 로딩 대기
+        time.sleep(2)
+        return True
+    except Exception:
+        return False
+
+
 def kill_chrome_processes():
     """남아있는 크롬 및 드라이버 프로세스를 강제로 종료합니다."""
     print("기존 크롬 프로세스를 종료하는 중...")
