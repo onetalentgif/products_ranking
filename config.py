@@ -21,4 +21,4 @@ TARGET_START_DATE = "2026-01-01"
 ACCOUNT = {"user_id": "sstrade251016", "user_pw": "a2345"}
 
 # 최대 검색할 페이지 수 설정
-MAX_PAGES = 4
+MAX_PAGES = 5
