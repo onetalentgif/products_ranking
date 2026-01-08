@@ -10,12 +10,31 @@ def get_keyword_from_xlsm():
         print(f"파일을 찾을 수 없습니다: {EXCEL_PATH}")
         return set()
 
+    app = xw.App(visible=False)  # 키워드만 뽑을 때는 백그라운드 실행
+    app.display_alerts = False  # 팝업 알림 차단
+
     # 1. 엑셀 로드
-    # # keep_vba=True: 매크로 유지
-    # # data_only=True: 수식이 아닌 '텍스트 결과값'만 가져옴
-    # wb = load_workbook(EXCEL_PATH, keep_vba=True, data_only=True)
-    # ws = wb['데이터']
-    wb = xw.Book(EXCEL_PATH)
+    # # # keep_vba=True: 매크로 유지
+    # # # data_only=True: 수식이 아닌 '텍스트 결과값'만 가져옴
+    # # wb = load_workbook(EXCEL_PATH, keep_vba=True, data_only=True)
+    # # ws = wb['데이터']
+    # wb = xw.Book(EXCEL_PATH)
+
+    # [수정] update_links=False로 팝업을 띄우지 않고 열기
+    wb = app.books.open(EXCEL_PATH, update_links=False)
+
+    # [수정] 열린 직후 코드로 직접 외부 링크 업데이트 명령
+    try:
+        # 1은 엑셀 통합 문서 링크를 의미합니다.
+        links = wb.api.LinkSources(1)
+        if links is not None:
+            # 리스트가 비어있지 않은지 확인 후 업데이트
+            wb.api.UpdateLink(Name=links)
+            print("외부 연결 데이터 업데이트 완료.")
+    except Exception as update_err:
+        # 업데이트 중 오류가 나도 키워드 추출은 계속 진행하도록 처리
+        print(f"외부 링크 업데이트 건너뜀 (사유: {update_err})")
+
     ws = wb.sheets['데이터']
 
     # 2. 키워드 가져오기
@@ -34,7 +53,7 @@ def get_keyword_from_xlsm():
     #     keywords.add(keyword)
 
     # J열(10번째) 7행부터 마지막 데이터가 있는 행까지 한 번에 가져오기
-    last_row = ws.range('J' + str(ws.cells.last_cell.row)).end('up').row
+    last_row = ws.range('J' + str(ws.api.Rows.Count)).end('up').row
     if last_row < 7:
         wb.close()
         return set()
@@ -96,7 +115,7 @@ def sync_date_columns_until_today(ws, start_date_str="2026-01-01"):
         #         break
 
         # 5행의 헤더들을 리스트로 가져와서 비교 (속도 최적화)
-        last_col = ws.range(5, ws.cells.last_cell.column).end('left').column
+        last_col = ws.range(5, ws.api.Columns.Count).end('left').column
         if last_col < start_search_col: last_col = start_search_col
 
         row_5_values = ws.range((5, start_search_col), (5, last_col + 5)).value
@@ -114,7 +133,8 @@ def sync_date_columns_until_today(ws, start_date_str="2026-01-01"):
             # '비고'나 '서식' 같은 고정 헤더가 시작되는 위치를 찾음
             target_col = start_search_col
             while True:
-                val = ws.cell(row=5, column=target_col).value
+                # val = ws.cell(row=5, column=target_col).value
+                val = ws.range(5, target_col).value
                 # 빈칸이거나 고정 키워드가 나오면 그 자리에 삽입
                 if val is None or any(kw in str(val) for kw in ["직전", "비고", "서식", "공란"]):
                     break
@@ -140,9 +160,13 @@ def get_all_date_texts_from_header(ws):
     COL_BV = 74
     date_text_list = []
 
+    # [수정] 5행 기준 마지막 열 찾기 (ws.max_column 대체)
+    max_col = ws.range(5, ws.api.Columns.Count).end('left').column
+
     # BV열(74)부터 오른쪽으로 하나씩 검사
-    for col in range(COL_BV, ws.max_column + 1):
-        cell_val = ws.cell(row=5, column=col).value
+    for col in range(COL_BV, max_col + 1):
+        # cell_val = ws.cell(row=5, column=col).value
+        cell_val = ws.range(row=5, column=col).value
 
         # 빈 칸이거나 날짜가 아닌 고정 헤더를 만나면 탐색 중단
         if cell_val is None:
@@ -184,11 +208,15 @@ def get_all_date_texts_from_header(ws):
 def get_missing_dates_for_keyword(ws, keyword, date_info_map):
     """지정된 키워드에 대해 순위값이 비어있는 날짜들만 반환"""
     missing_dates = set()
-    for row in range(7, ws.max_row + 1):
-        ex_kw = str(ws.cell(row=row, column=10).value or "").strip()
+
+    # [수정] J열 기준 마지막 행 찾기 (ws.max_row 대체)
+    last_row = ws.range('J' + str(ws.api.Rows.Count)).end('up').row
+
+    for row in range(7, last_row + 1):
+        ex_kw = str(ws.range(row, 10).value or "").strip()
         if ex_kw == keyword:
             for d_str, col_idx in date_info_map.items():
-                if ws.cell(row=row, column=col_idx).value is None:
+                if ws.range(row, col_idx).value is None:
                     missing_dates.add(d_str)
     return list(missing_dates)
 

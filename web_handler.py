@@ -243,6 +243,19 @@ def extract_product_results(driver, target_dates: list, timeout: int = 10):
     return product_results
 
 
+def kill_chrome_processes():
+    """남아있는 크롬 및 드라이버 프로세스를 강제로 종료합니다."""
+    print("기존 크롬 프로세스를 종료하는 중...")
+    try:
+        # 윈도우 명령어로 크롬과 크롬드라이버 강제 종료
+        os.system("taskkill /f /im chrome.exe /t")
+        os.system("taskkill /f /im chromedriver.exe /t")
+        print("프로세스 종료 완료.")
+        time.sleep(1)
+    except Exception as e:
+        print(f"프로세스 종료 중 오류(무시 가능): {e}")
+
+
 
 def delete_chrome_cache(user_id):
     target_profile_path = os.path.join(PROFILE_ROOT_DIR, user_id)

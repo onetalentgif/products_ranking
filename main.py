@@ -13,7 +13,8 @@ from web_handler import (
     login_success_check,
     search_keyword,
     extract_product_results,
-    delete_chrome_cache
+    delete_chrome_cache,
+    kill_chrome_processes
 )
 
 
@@ -30,12 +31,28 @@ def main():
         return
 
     print("엑셀 파일을 불러오는 중입니다...")
+
+    # [수정] xlwings App 인스턴스 생성 및 설정
+    app = xw.App(visible=True)  # 작업 과정을 보고 싶다면 True 유지
+    app.display_alerts = False  # 엑셀 알림(팝업) 차단
+
     # wb = load_workbook(EXCEL_PATH, keep_vba=True)
     # ws = wb['데이터']
 
-    # [수정] xlwings를 사용하여 엑셀 실행 (매크로 보존)
-    # 앱을 숨기고 싶다면 xw.App(visible=False) 사용
-    wb = xw.Book(EXCEL_PATH)
+    # [수정] 팝업 없이 열기
+    wb = app.books.open(EXCEL_PATH, update_links=False)
+
+    # [수정] 강제로 외부 링크 최신 데이터로 업데이트
+    try:
+        links = wb.api.LinkSources(1)
+        if links is not None:
+            wb.api.UpdateLink(Name=links)
+            print("외부 연결 데이터 업데이트 완료.")
+        else:
+            print("업데이트할 외부 링크가 없습니다.")
+    except Exception as update_err:
+        print(f"외부 링크 업데이트를 수행할 수 없습니다: {update_err}")
+
     ws = wb.sheets['데이터']  # [수정] xlwings 시트 선택 방식
 
     try:
@@ -60,6 +77,8 @@ def main():
         #
         # # print(f"대상 키워드: {list(keywords)}")
 
+        # # [추가] 작업 시작 전 깨끗하게 정리
+        # kill_chrome_processes()
         # 브라우저 실행 전 크롬 캐시 삭제
         delete_chrome_cache(ACCOUNT["user_id"])
         # 브라우저 실행 및 로그인
