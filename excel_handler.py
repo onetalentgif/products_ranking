@@ -274,10 +274,17 @@ def update_excel_rank(ws, target_vi_id, target_keyword, rank_value, target_date)
             vi_id = str(raw_vi_id or "").strip()
 
         if vi_id == str(target_vi_id) and str(kw).strip() == target_keyword:
-            # [수정] 일치하는 셀에 값 입력
-            ws.range(7 + i, target_col).value = rank_value
+            target_cell = ws.range(7 + i, target_col)
+
+            # [중복 방지] 이미 동일한 값이 엑셀에 들어있다면 업데이트 생략
+            if str(target_cell.value) == str(rank_value):
+                return True  # 성공으로 간주하되 작업은 안 함
+
+            target_cell.value = rank_value
             print(f"성공: {7 + i}행 {target_col}열에 '{rank_value}' 입력")
-            break
+            return True
+
+    return False  # 끝까지 못 찾은 경우
 
     # COL_VI_ID = 6  # F열
     # COL_KEYWORD = 10  # J열
