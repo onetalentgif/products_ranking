@@ -346,13 +346,13 @@ def get_dates_requiring_update(ws):
 
         col_idx = COL_BV + i
 
-        # [수정] 해당 열 전체 데이터를 리스트로 가져와서 빈칸 여부 검사 (성능 대폭 향상)
+        # [수정] 해당 열 전체 데이터를 리스트로 가져와서 빈칸 여부 검사
         col_data = ws.range((7, col_idx), (last_row, col_idx)).value
         if not isinstance(col_data, list): col_data = [col_data]
 
         # [핵심 수정 로직]
-        # 해당 열에서 '순위'라고 적힌 행들에 대해서만 데이터가 있는지 확인합니다.
-        # 판매수량, 광고, 가구매 행에 데이터가 있어도 '순위' 행들이 비어있으면 수집 대상에 포함됩니다.
+        # 해당 열에서 '순위'라고 적힌 행들에 대해서만 데이터가 있는지 확인
+        # 판매수량, 광고, 가구매 행에 데이터가 있어도 '순위' 행들이 비어있으면 수집 대상에 포함
         has_actual_rank_data = False
         for idx, rank_val in enumerate(col_data):
             # Q열의 텍스트를 확인하여 '순위' 포함 여부 체크
