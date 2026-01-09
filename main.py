@@ -87,21 +87,24 @@ def main():
                     print("수집된 정상 상품 데이터가 없습니다.")
                     return
 
-                # 중복 없는 키워드 집합 생성
-                keywords = set()
+                # [수정] 중복 없는 상품 번호(item[1]) 집합 생성
+                product_ids = set()
                 for items in normal_data.values():
                     for item in items:
-                        if item[0]:  # 키워드 존재 시
-                            keywords.add(item[0])
+                        if item[1]:  # item[1]은 product_id (상품 번호)
+                            product_ids.add(item[1])
 
-                print(f"-> 추출된 고유 키워드: {len(keywords)}개 ({list(keywords)})")
+                print(f"-> 추출된 고유 상품 번호: {len(product_ids)}개 ({list(product_ids)})")
 
-                # 추출된 각 키워드별 상세 검색 및 엑셀 입력
-                print("\n>>> 키워드별 상세 검색 및 엑셀 업데이트 시작")
-                for keyword in keywords:
-                    print(f"\n--- 현재 검색 키워드: [{keyword}] ---")
-                    search_keyword(driver, keyword)
+                # [수정] 추출된 각 상품 번호별 상세 검색 및 엑셀 입력
+                print("\n>>> 상품 번호별 상세 검색 및 엑셀 업데이트 시작")
+                for p_id in product_ids:
+                    print(f"\n--- 현재 검색 상품 번호: [{p_id}] ---")
 
+                    # 키워드 대신 상품 번호를 검색창에 입력
+                    search_keyword(driver, p_id)
+
+                    # 검색 결과 페이지에서 데이터 추출
                     product_results = extract_product_results(driver, target_dates)
 
                     # 추출된 결과를 엑셀에 입력
@@ -111,7 +114,7 @@ def main():
 
                         # product_results가 비었을 때
                         if not items:
-                            print(f" [{date_str}] '{keyword}'에 대한 검색 결과가 없습니다.")
+                            print(f" [{date_str}] '{p_id}'에 대한 검색 결과가 없습니다.")
                             continue
 
                         # 해당 날짜에 포함된 상품 리스트를 순회 (row_keyword, product_id, rank_number)
@@ -124,7 +127,7 @@ def main():
                             update_excel_rank(ws, product_id, product_keyword, product_rank, date_str)
                             found_count += 1
 
-                        print(f"-> [{keyword}] 키워드에 대해 {found_count}건 업데이트 완료.")
+                        print(f"-> [{p_id}] 에 대해 {found_count}건 업데이트 완료.")
 
                 # 작업이 끝난 후 한 번에 저장
                 print("\n데이터 기록 완료. 엑셀 파일을 저장합니다...")

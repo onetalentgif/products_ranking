@@ -160,7 +160,6 @@ def search_keyword(driver, keyword: str, timeout: int = 10):
     try:
         # 전체 선택된 상태로 페이지 초기화
         driver.get(TOP_ADS_URL)
-
         wait = WebDriverWait(driver, timeout)
 
         search_input = wait.until(
