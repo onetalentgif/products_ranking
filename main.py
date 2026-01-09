@@ -37,7 +37,12 @@ class RankingAutomation:
             raise FileNotFoundError(f"파일을 찾을 수 없습니다: {EXCEL_PATH}")
 
         print("엑셀 파일을 불러오는 중입니다...")
-        self.app = xw.App(visible=True)
+        
+        # [수정] exe 실행 여부 감지
+        is_frozen = getattr(sys, "frozen", False)
+        
+        # exe 실행이면 보이지 않게(False), 개발 모드면 보이게(True)
+        self.app = xw.App(visible=not is_frozen)
         self.app.display_alerts = False
         
         # Open without updating links initially to avoid popups
@@ -58,7 +63,12 @@ class RankingAutomation:
         """Prepare environment and start Chrome."""
         print("브라우저 환경 준비 중...")
         # delete_chrome_cache(ACCOUNT["user_id"])  # Optional: clear cache if needed
-        self.driver = create_driver(ACCOUNT["user_id"], headless=False)
+        
+        # [수정] exe 실행 여부 감지
+        is_frozen = getattr(sys, "frozen", False)
+
+        # exe 실행이면 headless(화면 없음) 모드 활성화
+        self.driver = create_driver(ACCOUNT["user_id"], headless=is_frozen)
 
     def run(self):
         try:
