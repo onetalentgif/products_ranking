@@ -237,8 +237,14 @@ def extract_product_results(driver, target_dates: list, timeout: int = 10):
 
                             rank_text = row.find_element(By.XPATH, "./td[9]").text.strip()
                             rank_number = ""
-                            if "순위밖" not in rank_text and "위" in rank_text:
+
+                            if "순위밖" in rank_text:
+                                rank_number = "X"
+                            elif "위" in rank_text:
                                 rank_number = rank_text.split('위')[0].strip()
+                            else:
+                                # 아무 값도 찾지 못한 경우
+                                rank_number = ""
 
                             product_results[target_datetimes[i]].append((row_keyword, product_id, rank_number))
                             print(f"매칭 발견: {target_datetime} | 키워드: {row_keyword} | ID: {product_id} | 순위: {rank_number}")
