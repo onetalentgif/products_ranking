@@ -229,6 +229,7 @@ def get_missing_dates_for_keyword(ws, keyword, date_info_map):
 def update_excel_rank(ws, target_vi_id, target_keyword, rank_value, target_date):
     # 5행에서 날짜에 해당하는 열 번호 찾기
     target_col = None
+
     # 날짜 입력 형식을 안전하게 변환
     dt = datetime.strptime(target_date, '%Y-%m-%d')
     search_header = f"{dt.month}/{dt.day}"
@@ -245,7 +246,7 @@ def update_excel_rank(ws, target_vi_id, target_keyword, rank_value, target_date)
     #         break
 
     # [수정] 날짜 열 찾기 (리스트 내 탐색)
-    row_5_values = ws.range((5, 74), (5, 150)).value
+    row_5_values = ws.range((5, 74), (5, 200)).value
     target_col = None
     for i, val in enumerate(row_5_values):
         if val is None: continue
@@ -254,7 +255,7 @@ def update_excel_rank(ws, target_vi_id, target_keyword, rank_value, target_date)
             target_col = 74 + i
             break
 
-    if not target_col:
+    if not target_col:  # target_col이 여전히 None(False)일때
         print(f"엑셀에서 {search_header} 열을 찾지 못했습니다.")
         return
 
