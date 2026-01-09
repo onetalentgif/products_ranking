@@ -215,3 +215,6 @@ class RankingAutomation:
 if __name__ == "__main__":
     automation = RankingAutomation()
     automation.run()
+    
+    # exe 실행 시 창이 바로 닫히지 않도록 대기
+    input("\n종료하려면 엔터 키를 누르세요...")
