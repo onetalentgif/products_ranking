@@ -313,6 +313,39 @@ def update_excel_rank(ws, target_vi_id, target_keyword, rank_value, target_date)
     #     pass
 
 
+# 이 함수를 루프 밖에서 한 번만 호출하여 인덱스를 만듭니다.
+def build_row_index(ws):
+    last_row = ws.range('J' + str(ws.api.Rows.Count)).end('up').row
+    # F열(ID)부터 J열(키워드)까지 한 번에 읽기
+    data = ws.range((7, 6), (last_row, 10)).value
+
+    row_index = {}
+    for i, row in enumerate(data):
+        raw_id, kw = row[0], row[4]  # F열은 0번, J열은 4번 인덱스
+        try:
+            vi_id = str(int(float(raw_id))) if raw_id else ""
+        except:
+            vi_id = str(raw_id or "").strip()
+
+        # 키 생성 (ID, 키워드) -> 실제 행 번호는 i + 7
+        row_index[(vi_id, str(kw).strip())] = i + 7
+    return row_index
+
+
+# 수정된 update 함수 (인덱스 사용)
+def update_excel_rank_fast(ws, row_index, target_col, target_vi_id, target_keyword, rank_value):
+    target_key = (str(target_vi_id), str(target_keyword).strip())
+    row_num = row_index.get(target_key)
+
+    if row_num:
+        target_cell = ws.range(row_num, target_col)
+        if str(target_cell.value) != str(rank_value):
+            target_cell.value = rank_value
+            return True
+    return False
+
+
+
 def get_dates_requiring_update(ws):
     """
     5행의 날짜 열들을 순회하며, 해당 열 전체(7행~마지막행)에

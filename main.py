@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timedelta
 import xlwings as xw
 from openpyxl import load_workbook
 from config import EXCEL_PATH, ACCOUNT, MAX_PAGES
@@ -6,7 +7,7 @@ from excel_handler import (
     get_keyword_from_xlsm,
     sync_date_columns_until_today,
     get_all_date_texts_from_header,
-    update_excel_rank, get_dates_requiring_update
+    update_excel_rank, get_dates_requiring_update, build_row_index, update_excel_rank_fast
 )
 from web_handler import (
     create_driver,
@@ -58,6 +59,25 @@ def main():
             return
 
         print(f">>> 수집 대상 날짜: {target_dates}")
+
+        # 행 번호를 빠르게 찾기 위한 인덱스 구축 (한 번만 수행)
+        row_index = build_row_index(ws)
+
+        # 날짜별 열(Column) 번호 미리 매핑 (한 번만 수행)
+        # 5행의 BV(74)열부터 마지막 열까지 날짜 헤더를 가져옵니다.
+        last_col = ws.range(5, ws.api.Columns.Count).end('left').column
+        if last_col < 74: last_col = 74
+        headers = ws.range((5, 74), (5, last_col)).value
+
+        # 엑셀 데이터를 리스트로 처리하기 위해 (헤더가 하나일 경우 처리)
+        if not isinstance(headers, list): headers = [headers]
+
+        date_to_col = {}
+        for i, val in enumerate(headers):
+            if val:
+                # 날짜를 '2026-01-09' 형태의 문자열로 변환하여 저장
+                d_key = val.strftime('%Y-%m-%d') if isinstance(val, datetime) else str(val).strip()
+                date_to_col[d_key] = 74 + i  # 시작 열인 74를 더해줍니다.
 
         # # 키워드 목록 가져오기
         # keywords = get_keyword_from_xlsm()
@@ -112,6 +132,13 @@ def main():
                     for target_date, items in product_results.items():
                         date_str = target_date.strftime('%Y-%m-%d')  # 출력용 날짜 변환
 
+                        # 미리 생성한 매핑 테이블에서 col_idx를 가져옴
+                        col_idx = date_to_col.get(date_str)
+
+                        if not col_idx:
+                            print(f" [{date_str}] 엑셀에서 해당 날짜 열을 찾지 못했습니다. 건너뜁니다.")
+                            continue
+
                         # product_results가 비었을 때
                         if not items:
                             print(f" [{date_str}] '{p_id}'에 대한 검색 결과가 없습니다.")
@@ -124,7 +151,10 @@ def main():
                             product_rank = item[2]  # 튜플의 세 번째: 순위
 
                             # 엑셀의 해당 날짜/키워드/ID 행을 찾아 순위 입력
-                            update_excel_rank(ws, product_id, product_keyword, product_rank, date_str)
+                            # update_excel_rank(ws, product_id, product_keyword, product_rank, date_str)
+                            # 인덱스를 사용하는 빠른 업데이트 함수 호출
+                            update_excel_rank_fast(ws, row_index, col_idx, product_id, product_keyword, product_rank)
+
                             found_count += 1
 
                         print(f"-> [{p_id}] 에 대해 {found_count}건 업데이트 완료.")
