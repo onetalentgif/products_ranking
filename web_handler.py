@@ -171,7 +171,7 @@ def search_keyword(driver, keyword: str, timeout: int = 10):
         search_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), '검색')]")))
         driver.execute_script("arguments[0].click();", search_button)
 
-        time.sleep(1.5)
+        time.sleep(1)
         print(f"'{keyword}' 검색 완료")
 
     except Exception as e:
