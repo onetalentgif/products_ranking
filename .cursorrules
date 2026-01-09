@@ -1,0 +1,53 @@
+# Project Context
+- This project is a Python-based automation tool.
+- **Python Environment**: 
+  - Python Version: 3.13.11
+  - Python Path: `C:/Users/sinde/miniforge3/envs/cony-env/python.exe`
+- **Key Installed Packages**:
+  - `selenium`: 4.39.0
+  - `xlwings`: 0.33.19
+  - `openpyxl`: 3.1.5
+  - `webdriver-manager`: 4.0.2
+  - `requests`: 2.32.5
+  - `pyinstaller`: 6.17.0
+  - `pywin32`: 311
+- It scrapes product ranking data using Selenium (Chrome) and updates an Excel file (`.xlsm`) using xlwings.
+- The system runs on Windows.
+
+# Development Guidelines
+- Use ONLY the installed Python version and packages listed above.
+- Do not add new dependencies without explicit permission.
+
+
+# Code Style
+- Language: Python
+- **Beginner-Friendly Coding**:
+  - Write code that is easy to read and understand.
+  - Avoid complex inline programming (e.g., long list comprehensions) or advanced functional programming (e.g., heavily nested lambda functions, complex decorators).
+  - Use clear and explicit logic, even if it requires more lines of code (e.g., using `for` loops instead of complex `map`/`filter`).
+- **Consistency with Existing Code**:
+  - Maintain existing function names, variable names, and output messages as much as possible.
+  - Do not rename or refactor existing logic unless it is absolutely necessary for functionality or requested by the user.
+- Comments: MUST use Korean for all comments and log messages to help the user understand the logic.
+
+- Formatting: Follow PEP 8 guidelines.
+- Type Hinting: Encouraged for function signatures to improve clarity.
+
+
+# Key Components
+- `main.py`: Entry point. Orchestrates the flow.
+- `web_handler.py`: Selenium related logic. Handles `Chrome_profile` for persistent login sessions.
+- `excel_handler.py`: Excel manipulation using `xlwings`. Must preserve VBA/Macros (`.xlsm`).
+- `config.py`: Configuration constants.
+
+# Rules & Best Practices
+- **Excel Handling**:
+  - Always handle Excel carefully to avoid zombie processes.
+  - Use `xlwings` for `.xlsm` files to keep macros intact.
+  - Ensure `app.quit()` or `wb.close()` is called in `finally` blocks.
+- **Selenium**:
+  - Use `Chrome_profile` to maintain login state.
+  - Handle `kill_chrome_processes` to clean up before starting.
+- **Error Handling**:
+  - Use `try-except` blocks for robustness, especially for external IO (Web/Excel).
+  - Print user-friendly error messages in Korean.
